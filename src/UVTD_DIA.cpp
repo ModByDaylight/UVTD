@@ -208,10 +208,10 @@ namespace RC::UVTD
     {
         CoInitialize(nullptr);
 
-        //if (!std::filesystem::exists(pdb_file))
-        //{
-        //    throw std::runtime_error{std::format("PDB '{}' not found", pdb_file.string())};
-        //}
+        if (!std::filesystem::exists(pdb_file))
+        {
+            throw std::runtime_error{std::format("PDB '{}' not found", pdb_file.string())};
+        }
 
         auto hr = CoCreateInstance(CLSID_DiaSource, nullptr, CLSCTX_INPROC_SERVER, __uuidof(IDiaDataSource), reinterpret_cast<void**>(&dia_source));
         if (FAILED(hr))
@@ -219,12 +219,12 @@ namespace RC::UVTD
             throw std::runtime_error{std::format("CoCreateInstance failed. Register msdia80.dll. Error: {}", HRESULTToString(hr))};
         }
 
-        //if (hr = dia_source->loadDataFromPdb(pdb_file.c_str()); FAILED(hr))
-        auto exe_file = pdb_file;
-        exe_file.replace_extension(".exe");
-        Output::send(STR("exe_file: {}\n"), exe_file.wstring());
-        Output::send(STR("exe_file.parent_path(): {}\n"), exe_file.parent_path().wstring());
-        if (hr = dia_source->loadDataForExe(STR("PDBs\\UE4SS_Main412-Win64-Shipping.exe"), nullptr, nullptr); FAILED(hr))
+        if (hr = dia_source->loadDataFromPdb(pdb_file.c_str()); FAILED(hr))
+        //auto exe_file = pdb_file;
+        //exe_file.replace_extension(".exe");
+        //Output::send(STR("exe_file: {}\n"), exe_file.wstring());
+        //Output::send(STR("exe_file.parent_path(): {}\n"), exe_file.parent_path().wstring());
+        //if (hr = dia_source->loadDataForExe(STR("PDBs\\UE4SS_Main412-Win64-Shipping.exe"), nullptr, nullptr); FAILED(hr))
         {
             throw std::runtime_error{std::format("Failed to load symbol data with error: {}", HRESULTToString(hr))};
         }
@@ -316,7 +316,7 @@ namespace RC::UVTD
                 symbol_name = symbol_undecorated_name_buffer;
             }
 
-            Output::send(STR("Found symbol: '{}', tag: '{}'\n"), !symbol_name.empty() ? symbol_name : STR("NoName"), sym_tag_to_string(sub_sym_tag));
+            //Output::send(STR("Found symbol: '{}', tag: '{}'\n"), !symbol_name.empty() ? symbol_name : STR("NoName"), sym_tag_to_string(sub_sym_tag));
 
             CComPtr<IDiaEnumSymbols> sub_sub_symbols;
             if (hr = sub_symbol->findChildren(SymTagNull, nullptr, NULL, &sub_sub_symbols); hr != S_OK)
@@ -374,6 +374,8 @@ namespace RC::UVTD
             SysFreeString(symbol_name_buffer);
             SysFreeString(symbol_undecorated_name_buffer);
 
+            size_t c{};
+            size_t c2{};
             for (; hr == S_OK; hr = sub_sub_symbols->Next(1, &sub_sub_symbol, &num_symbols_fetched))
             {
                 DWORD sub_sub_sym_tag;
@@ -410,7 +412,9 @@ namespace RC::UVTD
                     throw std::runtime_error{std::format("Call to 'get_virtualBaseOffset' failed with error '{}'", HRESULTToString(hr))};
                 }
 
-                Output::send(STR("    {}, 0x{:X}, tag: {}\n"), !sub_sub_symbol_name.empty() ? sub_sub_symbol_name : STR("NoName"), offset_in_vtable, sym_tag_to_string(sub_sub_sym_tag));
+                ++c;
+                if (offset_in_vtable > 0) { ++c2; }
+                //Output::send(STR("    {}, 0x{:X}, tag: {}\n"), !sub_sub_symbol_name.empty() ? sub_sub_symbol_name : STR("NoName"), offset_in_vtable, sym_tag_to_string(sub_sub_sym_tag));
 
                 CComPtr<IDiaSymbol> parent;
                 if (hr = sub_sub_symbol->get_classParent(&parent); hr == S_OK)
@@ -433,7 +437,7 @@ namespace RC::UVTD
                         name = undecorated_name_buffer;
                     }
 
-                    Output::send(STR("    parent: {}, tag: {}\n"), name, sym_tag_to_string(tag));
+                    //Output::send(STR("    parent: {}, tag: {}\n"), name, sym_tag_to_string(tag));
 
                     CComPtr<IDiaEnumSymbols> parent_sub_symbols;
                     if (hr = parent->findChildren(SymTagVTableShape, nullptr, NULL, &parent_sub_symbols); hr == S_OK)
@@ -444,8 +448,8 @@ namespace RC::UVTD
 
                         for (; hr == S_OK; hr = parent_sub_symbols->Next(1, &parent_sub_symbol, &num_parent_sub_symbols_fetched))
                         {
-                            DWORD tag2;
-                            parent->get_symTag(&tag2);
+                            //DWORD tag2;
+                            //parent->get_symTag(&tag2);
 
                             /*
                             BSTR name_buffer2;
@@ -470,7 +474,7 @@ namespace RC::UVTD
                             }
                             //*/
 
-                            Output::send(STR("        parent_sub_symbol: {}, tag: {}\n"), get_symbol_name(parent_sub_symbol), sym_tag_to_string(tag2));
+                            //Output::send(STR("        parent_sub_symbol: {}, tag: {}\n"), get_symbol_name(parent_sub_symbol), sym_tag_to_string(tag2));
 
                             parent_sub_symbol = nullptr;
                         }
@@ -488,9 +492,10 @@ namespace RC::UVTD
                     sub_sub_symbol_name_clean.append(STR("_Destructor"));
                 }
 
-                enum_entries.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
+                //enum_entries.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
+                enum_entries.entries.emplace(offset_in_vtable, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
                 //test.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
-                auto& function = class_entry.functions[sub_sub_symbol_name_clean];
+                auto& function = class_entry.functions[offset_in_vtable];
                 function.name = sub_sub_symbol_name_clean;
                 function.offset = offset_in_vtable;
 
@@ -498,6 +503,9 @@ namespace RC::UVTD
                 SysFreeString(sub_sub_symbol_undecorated_name_buffer);
                 sub_sub_symbol = nullptr;
             }
+
+            //Output::send(STR("Num virtuals: {}\n"), c);
+            //Output::send(STR("Num real virtuals: {}\n"), c2 + 1);
 
             sub_symbol = nullptr;
             sub_sub_symbols = nullptr;
@@ -555,6 +563,14 @@ namespace RC::UVTD
             }
         }
 
+        //for (auto&[class_name, enum_entries] : g_enum_entries)
+        //{
+        //    std::sort(enum_entries.entries.begin(), enum_entries.entries.end(), [](const std::pair<File::StringType, EnumEntry>& a, const std::pair<File::StringType, EnumEntry>& b) {
+        //        //return a.second != b.second?  a.second < b.second : a.first < b.first;
+        //        return a.second.offset != b.second.offset ? a.second.offset < b.second.offset : a.first < b.first;
+        //    });
+        //}
+
         for (const auto&[class_name, enum_entries] : g_enum_entries)
         {
             Output::send(STR("Generating file 'VTableOffsets_{}.hpp'\n"), enum_entries.class_name_clean);
@@ -592,10 +608,10 @@ namespace RC::UVTD
                 local_class_name.replace(0, 1, STR("F"));
             }
 
-            for (const auto&[enum_entry_name, enum_entry] : enum_entries.entries)
+            for (const auto&[enum_entry_index, enum_entry] : enum_entries.entries)
             {
-                hpp_dumper.send(STR("    static uint32_t {};\n"), enum_entry_name);
-                cpp_dumper.send(STR("    uint32_t {}::VTableOffsets::{} = 0;\n"), local_class_name, enum_entry_name);
+                hpp_dumper.send(STR("    static uint32_t {};\n"), enum_entry.name);
+                cpp_dumper.send(STR("    uint32_t {}::VTableOffsets::{} = 0;\n"), local_class_name, enum_entry.name);
             }
 
             hpp_dumper.send(STR("};\n"));
@@ -615,14 +631,14 @@ namespace RC::UVTD
                     return File::StringType{string};
                 });
 
-                for (const auto&[function_name, function_entry] : class_entry.functions)
+                for (const auto&[function_index, function_entry] : class_entry.functions)
                 {
                     auto local_class_name = class_entry.class_name;
                     if (auto pos = local_class_name.find(STR("Property")); pos != local_class_name.npos)
                     {
                         local_class_name.replace(0, 1, STR("F"));
                     }
-                    function_body_dumper.send(STR("{}::VTableOffsets::{} = 0x{:X};\n"), local_class_name, function_name, function_entry.offset);
+                    function_body_dumper.send(STR("{}::VTableOffsets::{} = 0x{:X};\n"), local_class_name, function_entry.name, function_entry.offset);
                 }
             }
         }

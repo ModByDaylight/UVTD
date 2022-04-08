@@ -3,11 +3,12 @@
 
 #include <filesystem>
 #include <unordered_set>
+#include <map>
+#include <utility>
 
 #include <File/File.hpp>
 #include <Input/Handler.hpp>
 #include <Function/Function.hpp>
-#include <utility>
 
 #include <dia2.h>
 #include <atlbase.h>
@@ -63,7 +64,7 @@ namespace RC::UVTD
         File::StringType class_name;
         File::StringType class_name_clean;
         std::filesystem::path pdb_file;
-        std::unordered_map<File::StringType, EnumEntry> entries;
+        std::map<uint32_t, EnumEntry> entries;
     };
     // Key: Class name
     extern std::unordered_map<File::StringType, EnumEntries> g_enum_entries;
@@ -77,7 +78,7 @@ namespace RC::UVTD
     {
         File::StringType class_name;
         File::StringType class_name_clean;
-        std::unordered_map<File::StringType, FunctionBody> functions;
+        std::map<uint32_t, FunctionBody> functions;
     };
     struct Classes
     {
