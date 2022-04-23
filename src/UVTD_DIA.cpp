@@ -1090,9 +1090,6 @@ namespace RC::UVTD
 
     auto main() -> void
     {
-        Output::set_default_devices<Output::DebugConsoleDevice>();
-        Output::send(STR("Unreal module successfully setup\n"));
-
         //input_handler.register_keydown_event(Input::Key::K, {Input::ModifierKey::CONTROL}, []() {
         /**/
         TRY([] {
@@ -1225,8 +1222,5 @@ namespace RC::UVTD
         generate_files("GeneratedVTables");
         Output::send(STR("Code generated.\n"));
         //});
-
-        auto event_loop_thread = std::thread{&event_loop_update};
-        event_loop_thread.join();
     }
 }

@@ -10,6 +10,26 @@
 
 using namespace RC;
 
+auto static get_user_selection() -> int32_t
+{
+    Output::send(STR("What would you like to do ?\n"));
+    Output::send(STR("1. Generate VTable layouts\n"));
+    Output::send(STR("2. Generate class/struct member variable layouts\n"));
+    Output::send(STR("0. Exit\n"));
+
+    int32_t selection{};
+    std::cin >> selection;
+    if (!std::cin.good())
+    {
+        selection = 9;
+        std::cin.clear();
+        std::cin.ignore();
+    }
+
+    std::cin.get();
+    return selection;
+}
+
 // We're outside DllMain here
 auto thread_dll_start([[maybe_unused]]LPVOID thread_param) -> unsigned long
 {
@@ -25,14 +45,36 @@ auto thread_dll_start([[maybe_unused]]LPVOID thread_param) -> unsigned long
         module_path = module_path.parent_path();
     }
 
-    Output::set_default_devices<Output::NewFileDevice>();
+    Output::set_default_devices<Output::DebugConsoleDevice, Output::NewFileDevice>();
     auto& file_device = Output::get_device<Output::NewFileDevice>();
     file_device.set_file_name_and_path(module_path / "UVTD.log");
 
     try
     {
         Output::send(STR("Unreal Virtual Table Dumper -> START\n"));
-        UVTD::main();
+
+        for (int32_t selection = get_user_selection(); selection != 1337; selection = get_user_selection())
+        {
+            if (selection == 0)
+            {
+                break;
+            }
+            else if (selection == 1)
+            {
+                Output::send(STR("Generating VTable layouts...\n"));
+                UVTD::main();
+            }
+            else if (selection == 2)
+            {
+                Output::send(STR("Generating class/struct member variable layouts...\n"));
+            }
+            else if (selection == 9)
+            {
+                // Reserved for NOP, ask user again.
+            }
+        }
+
+        //UVTD::main();
     }
     catch (std::exception& e)
     {
@@ -49,14 +91,11 @@ auto dll_process_attached(HMODULE moduleHandle) -> void
     {
         CloseHandle(handle);
     }
-
-    std::cin.get();
 }
 
 auto main() -> int
 {
     thread_dll_start(nullptr);
-    std::cin.get();
     return 0;
 }
 
