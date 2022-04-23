@@ -49,10 +49,9 @@ namespace RC::UVTD
 
     public:
         auto setup_symbol_loader() -> void;
-        //auto dump_vtable_for_symbol(File::StringViewType symbol_name) -> void;
         using EnumEntriesTypeAlias = struct EnumEntries*;
         auto dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
-        auto dump_vtable_for_symbol_test(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
+        auto dump_vtable_for_symbol(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
         auto generate_code() -> void;
         auto experimental_generate_members() -> void;
     };
