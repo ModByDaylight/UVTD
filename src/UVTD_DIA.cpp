@@ -24,7 +24,7 @@ namespace RC::UVTD
     bool processing_events{false};
     Input::Handler input_handler{L"ConsoleWindowClass", L"UnrealWindow"};
     std::unordered_map<File::StringType, EnumEntries> g_enum_entries{};
-    std::unordered_map<File::StringType, Classes> g_class_entries;
+    std::unordered_map<File::StringType, Classes> g_class_entries{};
 
     auto static event_loop_update() -> void
     {
@@ -185,20 +185,154 @@ namespace RC::UVTD
         }
     }
 
-    static auto get_symbol_name(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    auto static base_type_to_string(CComPtr<IDiaSymbol>& symbol) -> File::StringType
     {
-        BSTR name_buffer;
-        File::StringType name{STR("NoName")};
-        HRESULT hr;
-        if (hr = symbol->get_name(&name_buffer); hr == S_OK)
+        DWORD sym_tag;
+        symbol->get_symTag(&sym_tag);
+        if (sym_tag != SymTagBaseType)
         {
-            name = name_buffer;
+            throw std::runtime_error{"base_type_to_string only works on SymTagBaseType"};
         }
 
-        BSTR undecorated_name_buffer2;
-        if (hr = symbol->get_undecoratedName(&undecorated_name_buffer2); hr == S_OK)
+        File::StringType name{};
+
+        ULONGLONG type_size;
+        symbol->get_length(&type_size);
+
+        BasicType base_type;
+        symbol->get_baseType(std::bit_cast<DWORD*>(&base_type));
+
+        switch (base_type)
         {
-            name = undecorated_name_buffer2;
+            case btVoid:
+                name.append(STR("void"));
+                break;
+            case btChar:
+            case btWChar:
+                name.append(STR("TCHAR"));
+                break;
+            case btUInt:
+                name.append(STR("u"));
+            case btInt:
+                switch (type_size)
+                {
+                    case 1:
+                        name.append(STR("int8"));
+                        break;
+                    case 2:
+                        name.append(STR("int16"));
+                        break;
+                    case 4:
+                        name.append(STR("int32"));
+                        break;
+                    case 8:
+                        name.append(STR("int64"));
+                        break;
+                    default:
+                        name.append(STR("--unknown-int-size--"));
+                        break;
+                }
+                break;
+            case btFloat:
+                switch (type_size)
+                {
+                    case 4:
+                        name.append(STR("float"));
+                        break;
+                    case 8:
+                        name.append(STR("double"));
+                        break;
+                    default:
+                        name.append(STR("--unknown-float-size--"));
+                        break;
+                }
+                break;
+            case btBool:
+                name.append(STR("bool"));
+                break;
+            case btNoType:
+            case btBCD:
+            case btLong:
+            case btULong:
+            case btCurrency:
+            case btDate:
+            case btVariant:
+            case btComplex:
+            case btBit:
+            case btBSTR:
+            case btHresult:
+            case btChar16:
+            case btChar32:
+            case btChar8:
+                throw std::runtime_error{"Unsupported SymTagBaseType type."};
+                break;
+        }
+
+        return name;
+    }
+
+    auto static get_symbol_name(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    {
+        File::StringType name{};
+
+        DWORD sym_tag;
+        symbol->get_symTag(&sym_tag);
+
+        CComPtr<IDiaSymbol> real_symbol;
+
+        HRESULT hr;
+        if (sym_tag == SymTagFunctionType || sym_tag == SymTagPointerType)
+        {
+            if (hr = symbol->get_type(&real_symbol); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
+            }
+        }
+        else
+        {
+            // Default
+            real_symbol = symbol;
+        }
+
+        DWORD real_sym_tag;
+        real_symbol->get_symTag(&real_sym_tag);
+
+        if (real_sym_tag == SymTagBaseType)
+        {
+            name.append(base_type_to_string(real_symbol));
+        }
+        else
+        {
+            if (real_sym_tag == SymTagPointerType)
+            {
+                if (hr = real_symbol->get_type(&real_symbol); hr != S_OK)
+                {
+                    throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
+                }
+
+                real_symbol->get_symTag(&real_sym_tag);
+                if (real_sym_tag == SymTagBaseType)
+                {
+                    name.append(base_type_to_string(real_symbol));
+                }
+            }
+
+            BSTR name_buffer;
+            if (hr = real_symbol->get_name(&name_buffer); hr == S_OK)
+            {
+                name = name_buffer;
+            }
+
+            BSTR undecorated_name_buffer;
+            if (hr = real_symbol->get_undecoratedName(&undecorated_name_buffer); hr == S_OK)
+            {
+                name = undecorated_name_buffer;
+            }
+        }
+
+        if (name.empty())
+        {
+            name = STR("NoName");
         }
 
         return name;
@@ -240,7 +374,464 @@ namespace RC::UVTD
         }
     }
 
+    auto static generate_pointer_type(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    {
+        HRESULT hr;
+        DWORD sym_tag;
+        symbol->get_symTag(&sym_tag);
+        CComPtr<IDiaSymbol> real_symbol;
+
+        if (sym_tag == SymTagFunctionType)
+        {
+            if (hr = symbol->get_type(&real_symbol); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
+            }
+        }
+        else
+        {
+            // Default
+            real_symbol = symbol;
+        }
+
+        DWORD real_sym_tag;
+        real_symbol->get_symTag(&real_sym_tag);
+
+        if (real_sym_tag != SymTagPointerType)
+        {
+            return STR("");
+        }
+
+        BOOL is_reference = FALSE;
+        if (hr = real_symbol->get_reference(&is_reference); hr != S_OK)
+        {
+            throw std::runtime_error{std::format("Call to 'get_reference(&is_reference)' failed with error '{}'", HRESULTToString(hr))};
+        }
+
+        if (is_reference == TRUE)
+        {
+            return STR("&");
+        }
+        else
+        {
+            return STR("*");
+        }
+    }
+
+    auto static generate_const_qualifier(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    {
+        HRESULT hr;
+        CComPtr<IDiaSymbol> real_symbol = symbol;
+        DWORD sym_tag;
+        real_symbol->get_symTag(&sym_tag);
+
+        // TODO: Fix this. It's currently broken for two reasons.
+        //       1. If sym_tag == SymTagFunctionType, we assume that we're looking for the return type but we might be looking for the const qualifier on the function itself.
+        //       2. Even if we change this to fix the above problem, for some reason, calling 'get_constType' on the SymTagFunctionType sets the BOOL to FALSE, and calling it on SymTagFunction returns S_FALSE.
+        if (sym_tag == SymTagFunctionType)
+        {
+            if (hr = real_symbol->get_type(&real_symbol); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
+            }
+
+            real_symbol->get_symTag(&sym_tag);
+            if (sym_tag == SymTagPointerType)
+            {
+                if (hr = real_symbol->get_type(&real_symbol); hr != S_OK)
+                {
+                    throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
+                }
+            }
+        }
+
+        BOOL is_const = FALSE;
+        real_symbol->get_constType(&is_const);
+
+        return is_const ? STR("const") : STR("");
+    }
+
+    auto static generate_type(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    {
+        HRESULT hr;
+        CComPtr<IDiaSymbol> function_type_symbol;
+        if (hr = symbol->get_type(&function_type_symbol); hr != S_OK)
+        {
+            //throw std::runtime_error{std::format("Call to 'get_type(&function_type_symbol)' failed with error '{}', name: {}", HRESULTToString(hr), to_string(get_symbol_name(symbol)))};
+            function_type_symbol = symbol;
+        }
+
+        // TODO: Const for pointers
+        //       We only support const for non-pointers and the data the pointer is pointing to
+        auto return_type_name = get_symbol_name(function_type_symbol);
+        auto pointer_type = generate_pointer_type(function_type_symbol);
+        auto const_qualifier = generate_const_qualifier(function_type_symbol);
+
+        return std::format(STR("{}{}{}"), const_qualifier.empty() ? STR("") : std::format(STR("{} "), const_qualifier), return_type_name, pointer_type);
+    }
+
+    auto static generate_function_params(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    {
+        // TODO: Check if we have a 'this' param.
+        //       Right now we're assuming that there is a 'this' param, and subtracting 1 from the count to account for it.
+
+        HRESULT hr;
+
+        CComPtr<IDiaSymbol> function_type_symbol;
+        if (hr = symbol->get_type(&function_type_symbol); hr != S_OK)
+        {
+            throw std::runtime_error{std::format("Call to 'get_type(&function_type_symbol)' failed with error: {}", HRESULTToString(hr))};
+        }
+
+        File::StringType params{};
+
+        DWORD param_count;
+        function_type_symbol->get_count(&param_count);
+        --param_count;
+
+        params.append(std::format(STR("param_count: {}, "), param_count));
+
+        if (param_count == 0) { return STR(""); }
+
+        DWORD tag;
+        symbol->get_symTag(&tag);
+        //params.append(std::format(STR("tag: {}, "), sym_tag_to_string(tag)));
+
+        DWORD current_param{1};
+        CComPtr<IDiaEnumSymbols> sub_symbols;
+        if (hr = symbol->findChildren(SymTagNull, nullptr, NULL, &sub_symbols); hr == S_OK)
+        {
+            //params.append(STR("Has children, "));
+            CComPtr<IDiaSymbol> sub_symbol;
+            ULONG num_symbols_fetched{};
+            //hr = sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched);
+            LONG count;
+            hr = sub_symbols->get_Count(&count);
+            //params.append(std::format(STR("num_symbols_fetched: {}, "), num_symbols_fetched));
+            //params.append(std::format(STR("hr: {}, "), to_wstring(HRESULTToString(hr))));
+            //params.append(std::format(STR("count: {}, "), count));
+            while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
+            {
+                //DWORD tag2;
+                //sub_symbol->get_symTag(&tag2);
+                //Output::send(STR("name: {}, tag: {}\n"), get_symbol_name(sub_symbol), sym_tag_to_string(tag2));
+
+                DWORD data_kind;
+                sub_symbol->get_dataKind(&data_kind);
+
+                if (data_kind != DataKind::DataIsParam)
+                {
+                    sub_symbol = nullptr;
+                    continue;
+                }
+
+                params.append(std::format(STR("{} {}{}"), generate_type(sub_symbol), get_symbol_name(sub_symbol), current_param < param_count ? STR(", ") : STR("")));
+
+                ++current_param;
+            }
+            sub_symbol = nullptr;
+        }
+        sub_symbols = nullptr;
+
+        return params;
+    }
+
+    auto static generate_function_signature(CComPtr<IDiaSymbol>& symbol) -> File::StringType
+    {
+        DWORD tag;
+        symbol->get_symTag(&tag);
+        auto params = generate_function_params(symbol);
+        auto return_type = generate_type(symbol);
+        File::StringType const_qualifier = generate_const_qualifier(symbol);
+
+        //Output::send(STR("{} {}({}){};\n"), return_type, get_symbol_name(symbol), params, const_qualifier.empty() ? STR("") : std::format(STR(" {}"), const_qualifier));
+
+        return std::format(STR("{} {}({}){};"), return_type, get_symbol_name(symbol), params, const_qualifier.empty() ? STR("") : std::format(STR(" {}"), const_qualifier));
+    }
+
+    auto VTableDumper::dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entries, Class* class_entry) -> void
+    {
+        static std::unordered_set<File::StringType> valid_udt_names{
+                STR("UScriptStruct::ICppStructOps"),
+                STR("UObjectBase"),
+                STR("UObjectBaseUtility"),
+                STR("UObject"),
+                STR("UStruct"),
+                STR("FOutputDevice"),
+                STR("FMalloc"),
+                STR("UField"),
+                STR("FField"),
+                STR("FProperty"),
+                STR("UProperty"),
+                STR("FNumericProperty"),
+                STR("UNumericProperty"),
+                STR("FMulticastDelegateProperty"),
+                STR("UMulticastDelegateProperty"),
+                STR("FObjectPropertyBase"),
+                STR("UObjectPropertyBase"),
+        };
+
+        // Symbol name => Offset in vtable
+        static std::unordered_map<File::StringType, uint32_t> functions_already_dumped{};
+
+        auto symbol_name = get_symbol_name(symbol);
+
+        // Replace 'U' with 'F' for everything except UField & FField
+        if (replace_u_prefix_with_f_prefix == ReplaceUPrefixWithFPrefix::Yes)
+            //if (symbol_name.starts_with('U') && symbol_name != STR("UField") && symbol_name != STR("FField"))
+        {
+            symbol_name.replace(0, 1, STR("F"));
+        }
+
+        bool is_overload{};
+        if (auto it = functions_already_dumped.find(symbol_name); it != functions_already_dumped.end())
+        {
+            symbol_name.append(std::format(STR("_{}"), ++it->second));
+            is_overload = true;
+        }
+
+        File::StringType symbol_name_clean{symbol_name};
+        std::replace(symbol_name_clean.begin(), symbol_name_clean.end(), ':', '_');
+        std::replace(symbol_name_clean.begin(), symbol_name_clean.end(), '~', '$');
+
+        DWORD sym_tag;
+        symbol->get_symTag(&sym_tag);
+
+        if (sym_tag == SymTagUDT)
+        {
+            if (valid_udt_names.find(symbol_name) == valid_udt_names.end()) { return; }
+            functions_already_dumped.clear();
+            //Output::send(STR("Dumping vtable for symbol '{}', tag: '{}'\n"), symbol_name, sym_tag_to_string(sym_tag));
+
+            //auto& local_enum_entries = g_enum_entries.emplace(symbol_name_clean, EnumEntries{
+            //        .class_name = File::StringType{symbol_name},
+            //        .class_name_clean = symbol_name_clean,
+            //        .pdb_file = pdb_file
+            //}).first->second;
+
+            //auto local_enum_entries = [&]() -> EnumEntries* {
+            //    if (auto it = g_enum_entries.find(symbol_name_clean); it != g_enum_entries.end())
+            //    {
+            //        return &it->second;
+            //    }
+            //    else
+            //    {
+            //        return &g_enum_entries.emplace(symbol_name_clean, EnumEntries{
+            //                .class_name = File::StringType{symbol_name},
+            //                .class_name_clean = symbol_name_clean,
+            //                .pdb_file = pdb_file
+            //        }).first->second;
+            //    }
+            //}();
+
+            //auto local_enum_entries = [&]() -> std::unordered_map<File::StringType, EnumEntry>* {
+            //    if (g_enum_entries.contains(symbol_name_clean))
+            //    {
+            //        return &g_enum_entries[symbol_name_clean].entries;
+            //    }
+            //    else
+            //    {
+            //        return &g_enum_entries.emplace(symbol_name_clean, EnumEntries{
+            //                .class_name = symbol_name,
+            //                .class_name_clean = symbol_name_clean,
+            //                .pdb_file = pdb_file,
+            //                .entries = {}
+            //        }).first->second.entries;
+            //    }
+            //}();
+
+            auto local_enum_entries = &g_enum_entries[symbol_name_clean];
+
+            auto& local_class_entry = [&]() -> Class& {
+                auto pdb_file_name = pdb_file.filename().stem();
+                if (g_class_entries.contains(pdb_file_name))
+                {
+                    auto& classes = g_class_entries[pdb_file_name];
+                    if (classes.entries.contains(symbol_name_clean))
+                    {
+                        return classes.entries[symbol_name_clean];
+                    }
+                    else
+                    {
+                        return classes.entries.emplace(symbol_name_clean, Class{
+                                .class_name = File::StringType{symbol_name},
+                                .class_name_clean = symbol_name_clean
+                        }).first->second;
+                    }
+                }
+                else
+                {
+                    return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
+                            .class_name = File::StringType{symbol_name},
+                            .class_name_clean = symbol_name_clean
+                    };
+                }
+            }();
+
+            HRESULT hr;
+            CComPtr<IDiaEnumSymbols> sub_symbols;
+            if (hr = symbol->findChildren(SymTagNull, nullptr, NULL, &sub_symbols); hr == S_OK)
+            {
+                CComPtr<IDiaSymbol> sub_symbol;
+                ULONG num_symbols_fetched{};
+                while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
+                {
+                    // TODO:  The 'ReplaceUPrefixWithFPrefix' thing needs to be removed I think.
+                    //        This is because we can't keep track of it with a recursive design.
+                    //        We could hard-code the value to the symbol name instead.
+                    dump_vtable_for_symbol(sub_symbol, ReplaceUPrefixWithFPrefix::No, local_enum_entries, &local_class_entry);
+                }
+                sub_symbol = nullptr;
+            }
+            sub_symbols = nullptr;
+        }
+        else if (sym_tag == SymTagBaseClass)
+        {
+            //Output::send(STR("Dumping base '{}', tag: '{}'\n"), symbol_name, sym_tag_to_string(sym_tag));
+
+            //CComPtr<IDiaSymbol> sub_symbol;
+            //if (auto hr = symbol->get_type(&sub_symbol); hr == S_OK)
+            //{
+            //    // TODO:  The 'ReplaceUPrefixWithFPrefix' thing needs to be removed I think.
+            //    //        This is because we can't keep track of it with a recursive design.
+            //    //        We could hard-code the value to the symbol name instead.
+            //    dump_vtable_for_symbol(sub_symbol, ReplaceUPrefixWithFPrefix::No, nullptr, nullptr);
+            //}
+            return;
+        }
+        else if (sym_tag == SymTagFunction)
+        {
+            if (!enum_entries) { throw std::runtime_error{"enum_entries is nullptr"}; }
+            if (!class_entry) { throw std::runtime_error{"class_entry is nullptr"}; }
+
+            BOOL is_virtual = FALSE;
+            symbol->get_virtual(&is_virtual);
+            if (is_virtual == FALSE) { return; }
+
+
+            HRESULT hr;
+            DWORD offset_in_vtable = 0;
+            if (hr = symbol->get_virtualBaseOffset(&offset_in_vtable); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'get_virtualBaseOffset' failed with error '{}'", HRESULTToString(hr))};
+            }
+
+            //Output::send(STR("Dumping virtual function for symbol '{}', tag: '{}', offset: '{}'\n"), symbol_name, sym_tag_to_string(sym_tag), offset_in_vtable / 8);
+
+            //enum_entries->entries.emplace(offset_in_vtable, EnumEntry{.name = symbol_name_clean, .offset = offset_in_vtable});
+            //auto& enum_entry = [&]() -> EnumEntry& {
+            //    if (auto it = enum_entries->find(symbol_name_clean); it != enum_entries->end())
+            //    {
+            //        //if (auto it2 = it->second.overloads.find(offset_in_vtable); it2 != it->second.overloads.end())
+            //        {
+            //            Output::send(STR("Overload with offset already exists\n"));
+            //        }
+//
+            //        //return it->second.overloads[offset_in_vtable];
+            //        return it->second;
+            //    }
+            //    else
+            //    {
+            //        //auto& entries = enum_entries->emplace(symbol_name_clean, EnumEntryOverload{}).first->second;
+            //        //return entries.overloads.emplace(offset_in_vtable, EnumEntry{}).first->second;
+            //        return enum_entries->emplace(symbol_name_clean, EnumEntry{}).first->second;
+            //    }
+            //}();
+
+            //enum_entry.name = symbol_name_clean;
+            //enum_entry.offset = offset_in_vtable;
+            //*enum_entries = symbol_name_clean;
+            enum_entries->entries.emplace(symbol_name_clean);
+
+            //if (auto it = enum_entries->find(symbol_name_clean); it != enum_entries->end())
+            //{
+            //    //it->second.overloads.emplace(offset_in_vtable, EnumEntry{
+            //    //    .name = symbol_name_clean,
+            //    //    .offset = offset_in_vtable,
+            //    //});
+            //}
+            //else
+            //{
+//
+            //}
+            auto& function = class_entry->functions[offset_in_vtable];
+            function.name = symbol_name_clean;
+            function.signature = generate_function_signature(symbol);
+            function.offset = offset_in_vtable;
+            function.is_overload = is_overload;
+            functions_already_dumped.emplace(symbol_name, 1);
+        }
+    }
+
+    auto VTableDumper::dump_vtable_for_symbol_test(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void
+    {
+        Output::send(STR("Dumping {} struct symbols for {}\n"), names.size(), pdb_file.filename().stem().wstring());
+
+        for (const auto&[name, name_info] : names)
+        {
+            HRESULT hr{};
+            if (hr = dia_session->findChildren(nullptr, SymTagNull, nullptr, nsNone, &dia_global_symbols_enum); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'findChildren' failed with error '{}'", HRESULTToString(hr))};
+            }
+
+            CComPtr<IDiaSymbol> symbol;
+            ULONG celt_fetched;
+            if (hr = dia_global_symbols_enum->Next(1, &symbol, &celt_fetched); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Ran into an error with a symbol while calling 'Next', error: {}\n", HRESULTToString(hr))};
+            }
+
+            CComPtr<IDiaEnumSymbols> sub_symbols;
+            hr = symbol->findChildren(SymTagNull, name.c_str(), NULL, &sub_symbols);
+            if (hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Ran into a problem while calling 'findChildren', error: {}\n", HRESULTToString(hr))};
+            }
+
+            CComPtr<IDiaSymbol> sub_symbol;
+            ULONG num_symbols_fetched;
+
+            sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched);
+            //while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK)
+            {
+                if (!sub_symbol)
+                {
+                    //Output::send(STR("Missed symbol '{}'\n"), name);
+                    symbol = nullptr;
+                    sub_symbols = nullptr;
+                    dia_global_symbols_enum = nullptr;
+                    continue;
+                }
+                dump_vtable_for_symbol(sub_symbol, name_info.replace_u_prefix_with_f_prefix);
+                //CComPtr<IDiaEnumSymbols> test_symbols;
+                //CComPtr<IDiaSymbol> test_symbol;
+                //sub_symbol->findChildren(SymTagNull, STR("Serialize"), NULL, &test_symbols);
+                //while (test_symbols->Next(1, &test_symbol, &num_symbols_fetched) == S_OK)
+                //{
+                //    Output::send(STR("num_symbols_fetched: {}\n"), num_symbols_fetched);
+                //    if (!test_symbol)
+                //    {
+                //        //Output::send(STR("Missed symbol '{}'\n"), name);
+                //        symbol = nullptr;
+                //        sub_symbols = nullptr;
+                //        dia_global_symbols_enum = nullptr;
+                //        continue;
+                //    }
+//
+                //    DWORD tag;
+                //    test_symbol->get_symTag(&tag);
+//
+                //    Output::send(STR("Generating function signature, tag: {}\n"), sym_tag_to_string(tag));
+                //    Output::send(STR("Name: {}\n"), get_symbol_name(test_symbol));
+                //    generate_function_signature(test_symbol);
+                //}
+            }
+        }
+    }
+
     //auto VTableDumper::dump_vtable_for_symbol(File::StringViewType symbol_name_to_look_for) -> void
+    /*
     auto VTableDumper::dump_vtable_for_symbol(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void
     {
         //Output::send(STR("Dumping {}@{}\n"), pdb_file.filename().stem().wstring(), symbol_name_to_look_for);
@@ -296,10 +887,8 @@ namespace RC::UVTD
             File::StringType symbol_name{symbol_name_buffer};
 
             //Output::send(STR("{}\n"), symbol_name);
-            /**/
             //if (symbol_name != symbol_name_to_look_for)
 
-            /**/
             auto name_it = names.find(symbol_name);
             if (name_it == names.end())
             {
@@ -308,7 +897,6 @@ namespace RC::UVTD
                 continue;
             }
             symbols_found.emplace(symbol_name);
-            //*/
 
             BSTR symbol_undecorated_name_buffer;
             if (hr = sub_symbol->get_undecoratedName(&symbol_undecorated_name_buffer); hr == S_OK)
@@ -316,7 +904,7 @@ namespace RC::UVTD
                 symbol_name = symbol_undecorated_name_buffer;
             }
 
-            //Output::send(STR("Found symbol: '{}', tag: '{}'\n"), !symbol_name.empty() ? symbol_name : STR("NoName"), sym_tag_to_string(sub_sym_tag));
+            Output::send(STR("Found symbol: '{}', tag: '{}'\n"), !symbol_name.empty() ? symbol_name : STR("NoName"), sym_tag_to_string(sub_sym_tag));
 
             CComPtr<IDiaEnumSymbols> sub_sub_symbols;
             if (hr = sub_symbol->findChildren(SymTagNull, nullptr, NULL, &sub_sub_symbols); hr != S_OK)
@@ -345,8 +933,8 @@ namespace RC::UVTD
                     .pdb_file = pdb_file
             }).first->second;
 
+            auto pdb_file_name = pdb_file.filename().stem();
             auto& class_entry = [&]() -> Class& {
-                auto pdb_file_name = pdb_file.filename().stem();
                 if (g_class_entries.contains(pdb_file_name))
                 {
                     auto& classes = g_class_entries[pdb_file_name];
@@ -371,6 +959,20 @@ namespace RC::UVTD
                 }
             }();
 
+            CComPtr<IDiaSymbol> base;
+            if (hr = sub_symbol->get_virtualTableShape(&base); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'get_virtualTableShape' failed with error '{}'", HRESULTToString(hr))};
+            }
+
+            DWORD vtable_size;
+            if (hr = base->get_count(&vtable_size); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'get_type' failed with error '{}'", HRESULTToString(hr))};
+            }
+
+            Output::send(STR("vtable_size: {}\n"), vtable_size);
+
             SysFreeString(symbol_name_buffer);
             SysFreeString(symbol_undecorated_name_buffer);
 
@@ -381,11 +983,7 @@ namespace RC::UVTD
                 DWORD sub_sub_sym_tag;
                 sub_sub_symbol->get_symTag(&sub_sub_sym_tag);
 
-                BOOL is_virtual;
-                hr = sub_sub_symbol->get_virtual(&is_virtual);
-                if (hr != S_OK) { is_virtual = FALSE; }
-
-                if (is_virtual == FALSE)
+                if (sub_sub_sym_tag != SymTagBaseClass && sub_sub_sym_tag != SymTagFunction)
                 {
                     sub_sub_symbol = nullptr;
                     continue;
@@ -398,12 +996,43 @@ namespace RC::UVTD
                     sub_sub_symbol = nullptr;
                     continue;
                 }
-                File::StringViewType sub_sub_symbol_name{sub_sub_symbol_name_buffer};
+                File::StringType sub_sub_symbol_name{sub_sub_symbol_name_buffer};
 
                 BSTR sub_sub_symbol_undecorated_name_buffer;
                 if (hr = sub_sub_symbol->get_undecoratedName(&sub_sub_symbol_undecorated_name_buffer); hr == S_OK)
                 {
                     sub_sub_symbol_name = sub_sub_symbol_undecorated_name_buffer;
+                }
+
+                if (sub_sub_sym_tag == SymTagBaseClass)
+                {
+                    Output::send(STR("Base: {}\n"), get_symbol_name(sub_sub_symbol));
+                    CComPtr<IDiaSymbol> sub_base;
+                    if (hr = sub_sub_symbol->get_virtualTableShape(&sub_base); hr != S_OK)
+                    {
+                        throw std::runtime_error{std::format("Call to 'get_virtualTableShape' failed with error '{}'", HRESULTToString(hr))};
+                    }
+
+                    DWORD sub_vtable_size;
+                    if (hr = sub_base->get_count(&sub_vtable_size); hr != S_OK)
+                    {
+                        throw std::runtime_error{std::format("Call to 'get_type(&sub_vtable_size)' failed with error '{}'", HRESULTToString(hr))};
+                    };
+
+                    //auto a = g_class_entries[pdb_file_name].entries[sub_sub_symbol_name].functions.size();
+                    auto a = g_enum_entries[pdb_file_name].entries.size();
+                    Output::send(STR("Last offset: {}, VTable Size: {}\n"), sub_sub_symbol_name, a, sub_vtable_size);
+                    enum_entries.last_virtual_offset = sub_vtable_size;
+                }
+
+                BOOL is_virtual;
+                hr = sub_sub_symbol->get_virtual(&is_virtual);
+                if (hr != S_OK) { is_virtual = FALSE; }
+
+                if (is_virtual == FALSE)
+                {
+                    sub_sub_symbol = nullptr;
+                    continue;
                 }
 
                 DWORD offset_in_vtable;
@@ -415,6 +1044,24 @@ namespace RC::UVTD
                 ++c;
                 if (offset_in_vtable > 0) { ++c2; }
                 //Output::send(STR("    {}, 0x{:X}, tag: {}\n"), !sub_sub_symbol_name.empty() ? sub_sub_symbol_name : STR("NoName"), offset_in_vtable, sym_tag_to_string(sub_sub_sym_tag));
+
+                File::StringType sub_sub_symbol_name_clean{sub_sub_symbol_name};
+                if (sub_sub_symbol_name_clean.empty())
+                {
+                    sub_sub_symbol_name_clean = STR("InvalidSymbolName");
+                }
+                else if (sub_sub_symbol_name_clean.find('~') != sub_sub_symbol_name.npos)
+                {
+                    sub_sub_symbol_name_clean.replace(0, 1, STR(""));
+                    sub_sub_symbol_name_clean.append(STR("_Destructor"));
+                }
+
+                //enum_entries.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
+                enum_entries.entries.emplace(offset_in_vtable, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
+                //test.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
+                auto& function = class_entry.functions[offset_in_vtable];
+                function.name = sub_sub_symbol_name_clean;
+                function.offset = offset_in_vtable;
 
                 CComPtr<IDiaSymbol> parent;
                 if (hr = sub_sub_symbol->get_classParent(&parent); hr == S_OK)
@@ -451,28 +1098,26 @@ namespace RC::UVTD
                             //DWORD tag2;
                             //parent->get_symTag(&tag2);
 
-                            /*
-                            BSTR name_buffer2;
-                            File::StringType name2{STR("NoName")};
-                            if (hr = parent->get_name(&name_buffer2); hr != S_OK)
-                            {
-                                SysFreeString(name_buffer2);
-                            }
-                            else
-                            {
-                                name2 = name_buffer2;
-                            }
-
-                            BSTR undecorated_name_buffer2;
-                            if (hr = parent->get_undecoratedName(&undecorated_name_buffer2); hr != S_OK)
-                            {
-                                SysFreeString(name_buffer2);
-                            }
-                            else
-                            {
-                                name2 = undecorated_name_buffer2;
-                            }
-                            //*/
+                            //BSTR name_buffer2;
+                            //File::StringType name2{STR("NoName")};
+                            //if (hr = parent->get_name(&name_buffer2); hr != S_OK)
+                            //{
+                            //    SysFreeString(name_buffer2);
+                            //}
+                            //else
+                            //{
+                            //    name2 = name_buffer2;
+                            //}
+//
+                            //BSTR undecorated_name_buffer2;
+                            //if (hr = parent->get_undecoratedName(&undecorated_name_buffer2); hr != S_OK)
+                            //{
+                            //    SysFreeString(name_buffer2);
+                            //}
+                            //else
+                            //{
+                            //    name2 = undecorated_name_buffer2;
+                            //}
 
                             //Output::send(STR("        parent_sub_symbol: {}, tag: {}\n"), get_symbol_name(parent_sub_symbol), sym_tag_to_string(tag2));
 
@@ -480,24 +1125,6 @@ namespace RC::UVTD
                         }
                     }
                 }
-
-                File::StringType sub_sub_symbol_name_clean{sub_sub_symbol_name};
-                if (sub_sub_symbol_name_clean.empty())
-                {
-                    sub_sub_symbol_name_clean = STR("InvalidSymbolName");
-                }
-                else if (sub_sub_symbol_name_clean.find('~') != sub_sub_symbol_name.npos)
-                {
-                    sub_sub_symbol_name_clean.replace(0, 1, STR(""));
-                    sub_sub_symbol_name_clean.append(STR("_Destructor"));
-                }
-
-                //enum_entries.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
-                enum_entries.entries.emplace(offset_in_vtable, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
-                //test.entries.emplace(sub_sub_symbol_name_clean, EnumEntry{.name = sub_sub_symbol_name_clean, .offset = offset_in_vtable});
-                auto& function = class_entry.functions[offset_in_vtable];
-                function.name = sub_sub_symbol_name_clean;
-                function.offset = offset_in_vtable;
 
                 SysFreeString(sub_sub_symbol_name_buffer);
                 SysFreeString(sub_sub_symbol_undecorated_name_buffer);
@@ -522,6 +1149,7 @@ namespace RC::UVTD
         symbol = nullptr;
         dia_global_symbols_enum = nullptr;
     }
+    //*/
 
     auto static generate_files(const std::filesystem::path& output_dir) -> void
     {
@@ -571,53 +1199,55 @@ namespace RC::UVTD
         //    });
         //}
 
-        for (const auto&[class_name, enum_entries] : g_enum_entries)
-        {
-            Output::send(STR("Generating file 'VTableOffsets_{}.hpp'\n"), enum_entries.class_name_clean);
-            Output::Targets<Output::NewFileDevice> hpp_dumper;
-            auto& hpp_file_device = hpp_dumper.get_device<Output::NewFileDevice>();
-            hpp_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_include/VTableOffsets_{}.hpp"), enum_entries.class_name_clean));
-            hpp_file_device.set_formatter([](File::StringViewType string) {
-                return File::StringType{string};
-            });
-            hpp_dumper.send(STR("struct VTableOffsets\n"));
-            hpp_dumper.send(STR("{\n"));
+        Output::send(STR("g_enum_entries size: {}\n"), g_enum_entries.size());
 
-            Output::send(STR("Generating file 'VTableOffsets_{}.cpp'\n"), enum_entries.class_name_clean);
-            Output::Targets<Output::NewFileDevice> cpp_dumper;
-            auto& cpp_file_device = cpp_dumper.get_device<Output::NewFileDevice>();
-            cpp_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_src/VTableOffsets_{}.cpp"), enum_entries.class_name_clean));
-            cpp_file_device.set_formatter([](File::StringViewType string) {
-                return File::StringType{string};
-            });
-            cpp_dumper.send(STR("#include <cstdint>\n\n"));
-            // For now just include every struct that's had offsets generated
-            // It would be better if only necessary files are included but I can look into that later
-            cpp_dumper.send(STR("#include <Unreal/UObject.hpp>\n"));
-            cpp_dumper.send(STR("#include <Unreal/UScriptStruct.hpp>\n"));
-            cpp_dumper.send(STR("#include <Unreal/FMemory.hpp>\n"));
-            cpp_dumper.send(STR("#include <Unreal/Property/FMulticastDelegateProperty.hpp>\n"));
-            cpp_dumper.send(STR("#include <Unreal/Property/FNumericProperty.hpp>\n"));
-            cpp_dumper.send(STR("#include <Unreal/Property/FObjectProperty.hpp>\n"));
-            cpp_dumper.send(STR("#include <Unreal/FProperty.hpp>\n\n"));
-            cpp_dumper.send(STR("namespace RC::Unreal\n{\n"));
-
-            auto local_class_name = enum_entries.class_name;
-            if (auto pos = local_class_name.find(STR("Property")); pos != local_class_name.npos)
-            {
-                local_class_name.replace(0, 1, STR("F"));
-            }
-
-            for (const auto&[enum_entry_index, enum_entry] : enum_entries.entries)
-            {
-                hpp_dumper.send(STR("    static uint32_t {};\n"), enum_entry.name);
-                cpp_dumper.send(STR("    uint32_t {}::VTableOffsets::{} = 0;\n"), local_class_name, enum_entry.name);
-            }
-
-            hpp_dumper.send(STR("};\n"));
-
-            cpp_dumper.send(STR("}\n"));
-        }
+        //for (const auto&[class_name, enum_entries] : g_enum_entries)
+        //{
+        //    Output::send(STR("Generating file ({}) 'VTableOffsets_{}.hpp'\n"), class_name, class_name);
+        //    Output::Targets<Output::NewFileDevice> hpp_dumper;
+        //    auto& hpp_file_device = hpp_dumper.get_device<Output::NewFileDevice>();
+        //    hpp_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_include/VTableOffsets_{}.hpp"), class_name));
+        //    hpp_file_device.set_formatter([](File::StringViewType string) {
+        //        return File::StringType{string};
+        //    });
+        //    hpp_dumper.send(STR("struct VTableOffsets\n"));
+        //    hpp_dumper.send(STR("{\n"));
+//
+        //    Output::send(STR("Generating file 'VTableOffsets_{}.cpp'\n"), class_name);
+        //    Output::Targets<Output::NewFileDevice> cpp_dumper;
+        //    auto& cpp_file_device = cpp_dumper.get_device<Output::NewFileDevice>();
+        //    cpp_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_src/VTableOffsets_{}.cpp"), class_name));
+        //    cpp_file_device.set_formatter([](File::StringViewType string) {
+        //        return File::StringType{string};
+        //    });
+        //    cpp_dumper.send(STR("#include <cstdint>\n\n"));
+        //    // For now just include every struct that's had offsets generated
+        //    // It would be better if only necessary files are included but I can look into that later
+        //    cpp_dumper.send(STR("#include <Unreal/UObject.hpp>\n"));
+        //    cpp_dumper.send(STR("#include <Unreal/UScriptStruct.hpp>\n"));
+        //    cpp_dumper.send(STR("#include <Unreal/FMemory.hpp>\n"));
+        //    cpp_dumper.send(STR("#include <Unreal/Property/FMulticastDelegateProperty.hpp>\n"));
+        //    cpp_dumper.send(STR("#include <Unreal/Property/FNumericProperty.hpp>\n"));
+        //    cpp_dumper.send(STR("#include <Unreal/Property/FObjectProperty.hpp>\n"));
+        //    cpp_dumper.send(STR("#include <Unreal/FProperty.hpp>\n\n"));
+        //    cpp_dumper.send(STR("namespace RC::Unreal\n{\n"));
+//
+        //    auto local_class_name = class_name;
+        //    if (auto pos = local_class_name.find(STR("Property")); pos != local_class_name.npos)
+        //    {
+        //        local_class_name.replace(0, 1, STR("F"));
+        //    }
+//
+        //    for (const auto& enum_entry : enum_entries.entries)
+        //    {
+        //        hpp_dumper.send(STR("    static uint32_t {};\n"), enum_entry);
+        //        cpp_dumper.send(STR("    uint32_t {}::VTableOffsets::{} = 0;\n"), local_class_name, enum_entry);
+        //    }
+//
+        //    hpp_dumper.send(STR("};\n"));
+//
+        //    cpp_dumper.send(STR("}\n"));
+        //}
 
         for (const auto&[pdb_name, classes] : g_class_entries)
         {
@@ -638,10 +1268,56 @@ namespace RC::UVTD
                     {
                         local_class_name.replace(0, 1, STR("F"));
                     }
-                    function_body_dumper.send(STR("{}::VTableOffsets::{} = 0x{:X};\n"), local_class_name, function_entry.name, function_entry.offset);
+                    //function_body_dumper.send(STR("{}::VTableOffsets::{} = 0x{:X};\n"), local_class_name, function_entry.name, function_entry.offset);
+                    function_body_dumper.send(STR("if (auto it = {}::VTableLayoutMap.find(STR(\"{}\")); it == {}::VTableLayoutMap.end())\n"), local_class_name, function_entry.name, local_class_name);
+                    function_body_dumper.send(STR("{\n"));
+                    function_body_dumper.send(STR("    {}::VTableLayoutMap.emplace(STR(\"{}\"), 0x{:X});\n"), local_class_name, function_entry.name, function_entry.offset);
+                    function_body_dumper.send(STR("}\n\n"));
                 }
             }
         }
+
+        //auto& classes = g_class_entries[STR("5_00")];
+        for (const auto&[pdb_name, classes] : g_class_entries)
+        {
+            auto template_file = std::format(STR("VTableLayoutTemplates\\VTableLayout_{}_Template.ini"), pdb_name);
+            Output::send(STR("Generating file '{}'\n"), template_file);
+            Output::Targets<Output::NewFileDevice> ini_dumper;
+            auto& ini_file_device = ini_dumper.get_device<Output::NewFileDevice>();
+            ini_file_device.set_file_name_and_path(template_file);
+            ini_file_device.set_formatter([](File::StringViewType string) {
+                return File::StringType{string};
+            });
+
+            for (const auto&[class_name, class_entry] : classes.entries)
+            {
+                ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
+
+                for (const auto&[function_index, function_entry] : class_entry.functions)
+                {
+                    if (function_entry.is_overload)
+                    {
+                        ini_dumper.send(STR("; {}\n"), function_entry.signature);
+                    }
+                    ini_dumper.send(STR("{}\n"), function_entry.name);
+                }
+
+                ini_dumper.send(STR("\n"));
+            }
+        }
+
+        //for (const auto&[pdb_name, enum_entries] : g_enum_entries)
+        //{
+        //    if (enum_entries.class_name.empty()) { continue; }
+        //    ini_dumper.send(STR("[{}]\n"), enum_entries.class_name);
+//
+        //    for (const auto&[enum_index, enum_entry] : enum_entries.entries)
+        //    {
+        //        ini_dumper.send(STR("{} = {}\n"), enum_entry.name, enum_entry.offset == 0 ? 0 : ((enum_entry.offset / 8) - enum_entries.last_virtual_offset));
+        //    }
+//
+        //    ini_dumper.send(STR("\n"));
+        //}
     }
 
     auto VTableDumper::generate_code() -> void
@@ -659,11 +1335,11 @@ namespace RC::UVTD
         //std::unordered_set<File::StringType> names;
         std::unordered_map<File::StringType, SymbolNameInfo> names;
         names.emplace(STR("UObjectBase"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObjectBase"), ReplaceUPrefixWithFPrefix::No);
         names.emplace(STR("UObjectBaseUtility"), ReplaceUPrefixWithFPrefix::No);
         names.emplace(STR("UObject"), ReplaceUPrefixWithFPrefix::No);
         names.emplace(STR("UScriptStruct::ICppStructOps"), ReplaceUPrefixWithFPrefix::No);
         names.emplace(STR("FOutputDevice"), ReplaceUPrefixWithFPrefix::No);
+        //names.emplace(STR("UObject::Serialize"), ReplaceUPrefixWithFPrefix::No);
 
         // Structs that don't have their own virtual functions
         // They may be overriding base virtual functions but in that case they will be located at the same offset in the vtable as the base
@@ -722,7 +1398,8 @@ namespace RC::UVTD
         names.emplace(STR("FObjectPropertyBase"), ReplaceUPrefixWithFPrefix::No);
         names.emplace(STR("UObjectPropertyBase"), ReplaceUPrefixWithFPrefix::Yes);
 
-        dump_vtable_for_symbol(names);
+        //dump_vtable_for_symbol(names);
+        dump_vtable_for_symbol_test(names);
     }
 
     auto VTableDumper::experimental_generate_members() -> void

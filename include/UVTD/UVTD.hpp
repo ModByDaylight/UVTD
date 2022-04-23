@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <unordered_set>
+#include <set>
 #include <map>
 #include <utility>
 
@@ -49,7 +50,9 @@ namespace RC::UVTD
     public:
         auto setup_symbol_loader() -> void;
         //auto dump_vtable_for_symbol(File::StringViewType symbol_name) -> void;
-        auto dump_vtable_for_symbol(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
+        using EnumEntriesTypeAlias = struct EnumEntries*;
+        auto dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
+        auto dump_vtable_for_symbol_test(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
         auto generate_code() -> void;
         auto experimental_generate_members() -> void;
     };
@@ -57,28 +60,27 @@ namespace RC::UVTD
     struct EnumEntry
     {
         File::StringType name;
-        uint32_t offset;
     };
     struct EnumEntries
     {
-        File::StringType class_name;
-        File::StringType class_name_clean;
-        std::filesystem::path pdb_file;
-        std::map<uint32_t, EnumEntry> entries;
+        std::set<File::StringType> entries;
     };
-    // Key: Class name
+    // ClassName => FunctionName
     extern std::unordered_map<File::StringType, EnumEntries> g_enum_entries;
 
     struct FunctionBody
     {
         File::StringType name;
+        File::StringType signature;
         uint32_t offset;
+        bool is_overload;
     };
     struct Class
     {
         File::StringType class_name;
         File::StringType class_name_clean;
         std::map<uint32_t, FunctionBody> functions;
+        uint32_t last_virtual_offset;
     };
     struct Classes
     {
