@@ -62,11 +62,12 @@ auto thread_dll_start([[maybe_unused]]LPVOID thread_param) -> unsigned long
             else if (selection == 1)
             {
                 Output::send(STR("Generating VTable layouts...\n"));
-                UVTD::main();
+                UVTD::main(UVTD::VTableOrMemberVars::VTable);
             }
             else if (selection == 2)
             {
                 Output::send(STR("Generating class/struct member variable layouts...\n"));
+                UVTD::main(UVTD::VTableOrMemberVars::MemberVars);
             }
             else if (selection == 9)
             {

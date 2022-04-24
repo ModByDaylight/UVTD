@@ -70,6 +70,35 @@ namespace RC::UVTD
         }
     }
 
+    auto static kind_to_string(DWORD kind) -> File::StringViewType
+    {
+        switch (kind)
+        {
+            case DataIsUnknown:
+                return STR("DataIsUnknown");
+            case DataIsLocal:
+                return STR("DataIsLocal");
+            case DataIsStaticLocal:
+                return STR("DataIsStaticLocal");
+            case DataIsParam:
+                return STR("DataIsParam");
+            case DataIsObjectPtr:
+                return STR("DataIsObjectPtr");
+            case DataIsFileStatic:
+                return STR("DataIsFileStatic");
+            case DataIsGlobal:
+                return STR("DataIsGlobal");
+            case DataIsMember:
+                return STR("DataIsMember");
+            case DataIsStaticMember:
+                return STR("DataIsStaticMember");
+            case DataIsConstant:
+                return STR("DataIsConstant");
+        }
+
+        return STR("UnhandledKind");
+    }
+
     auto static sym_tag_to_string(DWORD sym_tag) -> File::StringViewType
     {
         switch (sym_tag)
@@ -535,28 +564,194 @@ namespace RC::UVTD
         return std::format(STR("{} {}({}){};"), return_type, get_symbol_name(symbol), params, const_qualifier.empty() ? STR("") : std::format(STR(" {}"), const_qualifier));
     }
 
+    auto& get_existing_or_create_new_class_entry(std::filesystem::path& pdb_file, const File::StringType& symbol_name, const File::StringType& symbol_name_clean)
+    {
+        auto pdb_file_name = pdb_file.filename().stem();
+        if (g_class_entries.contains(pdb_file_name))
+        {
+            auto& classes = g_class_entries[pdb_file_name];
+            if (classes.entries.contains(symbol_name_clean))
+            {
+                return classes.entries[symbol_name_clean];
+            }
+            else
+            {
+                return classes.entries.emplace(symbol_name_clean, Class{
+                        .class_name = File::StringType{symbol_name},
+                        .class_name_clean = symbol_name_clean
+                }).first->second;
+            }
+        }
+        else
+        {
+            return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
+                    .class_name = File::StringType{symbol_name},
+                    .class_name_clean = symbol_name_clean
+            };
+        }
+    }
+
+    auto get_type_name(CComPtr<IDiaSymbol>& type) -> File::StringType
+    {
+        DWORD type_tag;
+        type->get_symTag(&type_tag);
+
+        if (type_tag == SymTagEnum ||
+            type_tag == SymTagUDT)
+        {
+            return get_symbol_name(type);
+        }
+        else if (type_tag == SymTagBaseType)
+        {
+            return base_type_to_string(type);
+        }
+        else if (type_tag == SymTagPointerType)
+        {
+            auto type_name = get_symbol_name(type);
+            auto pointer_type = generate_pointer_type(type);
+            return std::format(STR("{}{}"), type_name, pointer_type);
+        }
+        else
+        {
+            throw std::runtime_error{"Unknown type."};
+        }
+    }
+
+    static std::unordered_set<File::StringType> valid_udt_names{
+            STR("UScriptStruct::ICppStructOps"),
+            STR("UObjectBase"),
+            STR("UObjectBaseUtility"),
+            STR("UObject"),
+            STR("UStruct"),
+            STR("FOutputDevice"),
+            STR("FMalloc"),
+            STR("UField"),
+            STR("FField"),
+            STR("FProperty"),
+            STR("UProperty"),
+            STR("FNumericProperty"),
+            STR("UNumericProperty"),
+            STR("FMulticastDelegateProperty"),
+            STR("UMulticastDelegateProperty"),
+            STR("FObjectPropertyBase"),
+            STR("UObjectPropertyBase"),
+            STR("UWorld"),
+    };
+
+    auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, Class* class_entry) -> void
+    {
+        auto symbol_name = get_symbol_name(symbol);
+
+        // Replace 'U' with 'F' for everything except UField & FField
+        if (replace_u_prefix_with_f_prefix == ReplaceUPrefixWithFPrefix::Yes)
+        {
+            symbol_name.replace(0, 1, STR("F"));
+        }
+
+        File::StringType symbol_name_clean{symbol_name};
+        std::replace(symbol_name_clean.begin(), symbol_name_clean.end(), ':', '_');
+        std::replace(symbol_name_clean.begin(), symbol_name_clean.end(), '~', '$');
+
+        DWORD sym_tag;
+        symbol->get_symTag(&sym_tag);
+
+        HRESULT hr;
+        if (sym_tag == SymTagUDT)
+        {
+            if (valid_udt_names.find(symbol_name) == valid_udt_names.end()) { return; }
+            auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean);
+
+            CComPtr<IDiaEnumSymbols> sub_symbols;
+            if (hr = symbol->findChildren(SymTagNull, nullptr, NULL, &sub_symbols); hr == S_OK)
+            {
+                CComPtr<IDiaSymbol> sub_symbol;
+                ULONG num_symbols_fetched{};
+                while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
+                {
+                    dump_member_variable_layouts(sub_symbol, ReplaceUPrefixWithFPrefix::No, &local_class_entry);
+                }
+                sub_symbol = nullptr;
+            }
+            sub_symbols = nullptr;
+        }
+        else if (sym_tag == SymTagData)
+        {
+            if (!class_entry) { throw std::runtime_error{"class_entry is nullptr"}; }
+
+            DWORD kind;
+            symbol->get_dataKind(&kind);
+
+            if (kind != DataKind::DataIsMember)
+            {
+                return;
+            }
+
+            CComPtr<IDiaSymbol> type;
+            if (hr = symbol->get_type(&type); hr != S_OK)
+            {
+                throw std::runtime_error{"Could not get type\n"};
+            }
+
+            DWORD type_tag;
+            type->get_symTag(&type_tag);
+
+            auto type_name = get_type_name(type);
+
+            Output::send(STR("{} {} ({}, {})\n"), type_name, symbol_name, sym_tag_to_string(type_tag), kind_to_string(kind));
+            class_entry->variables.emplace(symbol_name, MemberVariable{
+                .type = type_name,
+                .name = symbol_name
+            });
+        }
+    }
+
+    auto VTableDumper::dump_member_variable_layouts(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void
+    {
+        Output::send(STR("Dumping {} symbols for {}\n"), names.size(), pdb_file.filename().stem().wstring());
+
+        for (const auto&[name, name_info] : names)
+        {
+            Output::send(STR("{}...\n"), name);
+            HRESULT hr{};
+            if (hr = dia_session->findChildren(nullptr, SymTagNull, nullptr, nsNone, &dia_global_symbols_enum); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Call to 'findChildren' failed with error '{}'", HRESULTToString(hr))};
+            }
+
+            CComPtr<IDiaSymbol> symbol;
+            ULONG celt_fetched;
+            if (hr = dia_global_symbols_enum->Next(1, &symbol, &celt_fetched); hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Ran into an error with a symbol while calling 'Next', error: {}\n", HRESULTToString(hr))};
+            }
+
+            CComPtr<IDiaEnumSymbols> sub_symbols;
+            hr = symbol->findChildren(SymTagNull, name.c_str(), NULL, &sub_symbols);
+            if (hr != S_OK)
+            {
+                throw std::runtime_error{std::format("Ran into a problem while calling 'findChildren', error: {}\n", HRESULTToString(hr))};
+            }
+
+            CComPtr<IDiaSymbol> sub_symbol;
+            ULONG num_symbols_fetched;
+
+            sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched);
+            if (!sub_symbol)
+            {
+                //Output::send(STR("Missed symbol '{}'\n"), name);
+                symbol = nullptr;
+                sub_symbols = nullptr;
+                dia_global_symbols_enum = nullptr;
+                continue;
+            }
+
+            dump_member_variable_layouts(sub_symbol, name_info.replace_u_prefix_with_f_prefix);
+            Output::send(STR("\n"));
+        }
+    }
+
     auto VTableDumper::dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entries, Class* class_entry) -> void
     {
-        static std::unordered_set<File::StringType> valid_udt_names{
-                STR("UScriptStruct::ICppStructOps"),
-                STR("UObjectBase"),
-                STR("UObjectBaseUtility"),
-                STR("UObject"),
-                STR("UStruct"),
-                STR("FOutputDevice"),
-                STR("FMalloc"),
-                STR("UField"),
-                STR("FField"),
-                STR("FProperty"),
-                STR("UProperty"),
-                STR("FNumericProperty"),
-                STR("UNumericProperty"),
-                STR("FMulticastDelegateProperty"),
-                STR("UMulticastDelegateProperty"),
-                STR("FObjectPropertyBase"),
-                STR("UObjectPropertyBase"),
-        };
-
         // Symbol name => Offset in vtable
         static std::unordered_map<File::StringType, uint32_t> functions_already_dumped{};
 
@@ -591,31 +786,32 @@ namespace RC::UVTD
 
             auto local_enum_entries = &g_enum_entries[symbol_name_clean];
 
-            auto& local_class_entry = [&]() -> Class& {
-                auto pdb_file_name = pdb_file.filename().stem();
-                if (g_class_entries.contains(pdb_file_name))
-                {
-                    auto& classes = g_class_entries[pdb_file_name];
-                    if (classes.entries.contains(symbol_name_clean))
-                    {
-                        return classes.entries[symbol_name_clean];
-                    }
-                    else
-                    {
-                        return classes.entries.emplace(symbol_name_clean, Class{
-                                .class_name = File::StringType{symbol_name},
-                                .class_name_clean = symbol_name_clean
-                        }).first->second;
-                    }
-                }
-                else
-                {
-                    return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
-                            .class_name = File::StringType{symbol_name},
-                            .class_name_clean = symbol_name_clean
-                    };
-                }
-            }();
+            //auto& local_class_entry = [&]() -> Class& {
+            //    auto pdb_file_name = pdb_file.filename().stem();
+            //    if (g_class_entries.contains(pdb_file_name))
+            //    {
+            //        auto& classes = g_class_entries[pdb_file_name];
+            //        if (classes.entries.contains(symbol_name_clean))
+            //        {
+            //            return classes.entries[symbol_name_clean];
+            //        }
+            //        else
+            //        {
+            //            return classes.entries.emplace(symbol_name_clean, Class{
+            //                    .class_name = File::StringType{symbol_name},
+            //                    .class_name_clean = symbol_name_clean
+            //            }).first->second;
+            //        }
+            //    }
+            //    else
+            //    {
+            //        return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
+            //                .class_name = File::StringType{symbol_name},
+            //                .class_name_clean = symbol_name_clean
+            //        };
+            //    }
+            //}();
+            auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean);
 
             HRESULT hr;
             CComPtr<IDiaEnumSymbols> sub_symbols;
@@ -710,180 +906,130 @@ namespace RC::UVTD
         }
     }
 
-    auto static generate_files(const std::filesystem::path& output_dir) -> void
+    auto static generate_files(const std::filesystem::path& output_dir, VTableOrMemberVars vtable_or_member_vars) -> void
     {
         if (!std::filesystem::exists(output_dir))
         {
             std::filesystem::create_directory(output_dir);
         }
 
-        if (std::filesystem::exists(output_dir / "generated_include"))
+        if (vtable_or_member_vars == VTableOrMemberVars::VTable)
         {
-            for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_include"))
+            if (std::filesystem::exists(output_dir / "generated_include"))
             {
-                if (item.is_directory()) { continue; }
-                if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
+                for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_include"))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
 
-                File::delete_file(item.path());
+                    File::delete_file(item.path());
+                }
             }
-        }
 
-        if (std::filesystem::exists(output_dir / "generated_include/FunctionBodies"))
-        {
-            for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_include/FunctionBodies"))
+            if (std::filesystem::exists(output_dir / "generated_include/FunctionBodies"))
             {
-                if (item.is_directory()) { continue; }
-                if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
+                for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_include/FunctionBodies"))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
 
-                File::delete_file(item.path());
+                    File::delete_file(item.path());
+                }
             }
-        }
 
-        if (std::filesystem::exists(output_dir / "generated_src"))
-        {
-            for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_src"))
+            if (std::filesystem::exists(output_dir / "generated_src"))
             {
-                if (item.is_directory()) { continue; }
-                if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
+                for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_src"))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
 
-                File::delete_file(item.path());
+                    File::delete_file(item.path());
+                }
             }
-        }
 
-        for (const auto&[pdb_name, classes] : g_class_entries)
-        {
-            for (const auto&[class_name, class_entry] : classes.entries)
+            for (const auto&[pdb_name, classes] : g_class_entries)
             {
-                Output::send(STR("Generating file '{}_VTableOffsets_{}_FunctionBody.cpp'\n"), pdb_name, class_entry.class_name_clean);
-                Output::Targets<Output::NewFileDevice> function_body_dumper;
-                auto& function_body_file_device = function_body_dumper.get_device<Output::NewFileDevice>();
-                function_body_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_include/FunctionBodies/{}_VTableOffsets_{}_FunctionBody.cpp"), pdb_name, class_name));
-                function_body_file_device.set_formatter([](File::StringViewType string) {
+                for (const auto&[class_name, class_entry] : classes.entries)
+                {
+                    Output::send(STR("Generating file '{}_VTableOffsets_{}_FunctionBody.cpp'\n"), pdb_name, class_entry.class_name_clean);
+                    Output::Targets<Output::NewFileDevice> function_body_dumper;
+                    auto& function_body_file_device = function_body_dumper.get_device<Output::NewFileDevice>();
+                    function_body_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_include/FunctionBodies/{}_VTableOffsets_{}_FunctionBody.cpp"), pdb_name, class_name));
+                    function_body_file_device.set_formatter([](File::StringViewType string) {
+                        return File::StringType{string};
+                    });
+
+                    for (const auto&[function_index, function_entry] : class_entry.functions)
+                    {
+                        auto local_class_name = class_entry.class_name;
+                        if (auto pos = local_class_name.find(STR("Property")); pos != local_class_name.npos)
+                        {
+                            local_class_name.replace(0, 1, STR("F"));
+                        }
+
+                        function_body_dumper.send(STR("if (auto it = {}::VTableLayoutMap.find(STR(\"{}\")); it == {}::VTableLayoutMap.end())\n"), local_class_name, function_entry.name, local_class_name);
+                        function_body_dumper.send(STR("{\n"));
+                        function_body_dumper.send(STR("    {}::VTableLayoutMap.emplace(STR(\"{}\"), 0x{:X});\n"), local_class_name, function_entry.name, function_entry.offset);
+                        function_body_dumper.send(STR("}\n\n"));
+                    }
+                }
+            }
+
+            for (const auto&[pdb_name, classes] : g_class_entries)
+            {
+                auto template_file = std::format(STR("VTableLayoutTemplates\\VTableLayout_{}_Template.ini"), pdb_name);
+                Output::send(STR("Generating file '{}'\n"), template_file);
+                Output::Targets<Output::NewFileDevice> ini_dumper;
+                auto& ini_file_device = ini_dumper.get_device<Output::NewFileDevice>();
+                ini_file_device.set_file_name_and_path(template_file);
+                ini_file_device.set_formatter([](File::StringViewType string) {
                     return File::StringType{string};
                 });
 
-                for (const auto&[function_index, function_entry] : class_entry.functions)
+                for (const auto&[class_name, class_entry] : classes.entries)
                 {
-                    auto local_class_name = class_entry.class_name;
-                    if (auto pos = local_class_name.find(STR("Property")); pos != local_class_name.npos)
+                    ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
+
+                    for (const auto&[function_index, function_entry] : class_entry.functions)
                     {
-                        local_class_name.replace(0, 1, STR("F"));
+                        if (function_entry.is_overload)
+                        {
+                            ini_dumper.send(STR("; {}\n"), function_entry.signature);
+                        }
+                        ini_dumper.send(STR("{}\n"), function_entry.name);
                     }
 
-                    function_body_dumper.send(STR("if (auto it = {}::VTableLayoutMap.find(STR(\"{}\")); it == {}::VTableLayoutMap.end())\n"), local_class_name, function_entry.name, local_class_name);
-                    function_body_dumper.send(STR("{\n"));
-                    function_body_dumper.send(STR("    {}::VTableLayoutMap.emplace(STR(\"{}\"), 0x{:X});\n"), local_class_name, function_entry.name, function_entry.offset);
-                    function_body_dumper.send(STR("}\n\n"));
+                    ini_dumper.send(STR("\n"));
                 }
             }
         }
-
-        for (const auto&[pdb_name, classes] : g_class_entries)
+        else
         {
-            auto template_file = std::format(STR("VTableLayoutTemplates\\VTableLayout_{}_Template.ini"), pdb_name);
-            Output::send(STR("Generating file '{}'\n"), template_file);
-            Output::Targets<Output::NewFileDevice> ini_dumper;
-            auto& ini_file_device = ini_dumper.get_device<Output::NewFileDevice>();
-            ini_file_device.set_file_name_and_path(template_file);
-            ini_file_device.set_formatter([](File::StringViewType string) {
-                return File::StringType{string};
-            });
-
-            for (const auto&[class_name, class_entry] : classes.entries)
+            for (const auto&[pdb_name, classes] : g_class_entries)
             {
-                ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
+                auto template_file = std::format(STR("MemberVarLayoutTemplates\\MemberVariableLayout_{}_Template.ini"), pdb_name);
+                Output::send(STR("Generating file '{}'\n"), template_file);
+                Output::Targets<Output::NewFileDevice> ini_dumper;
+                auto& ini_file_device = ini_dumper.get_device<Output::NewFileDevice>();
+                ini_file_device.set_file_name_and_path(template_file);
+                ini_file_device.set_formatter([](File::StringViewType string) {
+                    return File::StringType{string};
+                });
 
-                for (const auto&[function_index, function_entry] : class_entry.functions)
+                for (const auto&[class_name, class_entry] : classes.entries)
                 {
-                    if (function_entry.is_overload)
-                    {
-                        ini_dumper.send(STR("; {}\n"), function_entry.signature);
-                    }
-                    ini_dumper.send(STR("{}\n"), function_entry.name);
-                }
+                    ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
 
-                ini_dumper.send(STR("\n"));
+                    for (const auto&[variable_name, variable] : class_entry.variables)
+                    {
+                        ini_dumper.send(STR("{}\n"), variable.name);
+                    }
+
+                    ini_dumper.send(STR("\n"));
+                }
             }
         }
-    }
-
-    auto VTableDumper::generate_code() -> void
-    {
-        setup_symbol_loader();
-
-        // TODO: Figure out what to do if a legacy struct still exists alongside the new struct
-        //       An example of this is UField and FField. Both exist in 4.25+
-        //       FField & UField are special and will not be combined
-        //       All other types, that only differ by the prefix, must have their generated non-function-body files merged into one
-        //       This should be done, confirm it before removing this comment
-
-        //std::unordered_set<File::StringType> names;
-        std::unordered_map<File::StringType, SymbolNameInfo> names;
-        names.emplace(STR("UObjectBase"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObjectBaseUtility"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObject"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UScriptStruct::ICppStructOps"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("FOutputDevice"), ReplaceUPrefixWithFPrefix::No);
-        //names.emplace(STR("UObject::Serialize"), ReplaceUPrefixWithFPrefix::No);
-
-        // Structs that don't have their own virtual functions
-        // They may be overriding base virtual functions but in that case they will be located at the same offset in the vtable as the base
-        // As a result, they don't need to have their offset in the vtable dumped
-        //names.emplace(STR("FBoolProperty")); // Will come up with nothing in <4.25
-        //names.emplace(STR("UBoolProperty")); // Will have something in 4.25+
-        //names.emplace(STR("FArrayProperty"));
-        //names.emplace(STR("UArrayProperty"));
-        //names.emplace(STR("FMapProperty"));
-        //names.emplace(STR("UMapProperty"));
-        //names.emplace(STR("FDelegateProperty"));
-        //names.emplace(STR("UDelegateProperty"));
-        //names.emplace(STR("FMulticastInlineDelegateProperty"));
-        //names.emplace(STR("UMulticastInlineDelegateProperty"));
-        //names.emplace(STR("FMulticastSparseDelegateProperty"));
-        //names.emplace(STR("UMulticastSparseDelegateProperty"));
-        //names.emplace(STR("FFieldPathProperty")); // 4.25+ only
-        //names.emplace(STR("FInterfaceProperty"));
-        //names.emplace(STR("UInterfaceProperty"));
-        //names.emplace(STR("FObjectProperty"));
-        //names.emplace(STR("UObjectProperty"));
-        //names.emplace(STR("FWeakObjectProperty"));
-        //names.emplace(STR("UWeakObjectProperty"));
-        //names.emplace(STR("FLazyObjectProperty"));
-        //names.emplace(STR("ULazyObjectProperty"));
-        //names.emplace(STR("FSoftObjectProperty"));
-        //names.emplace(STR("USoftObjectProperty"));
-        //names.emplace(STR("FClassProperty"));
-        //names.emplace(STR("UClassProperty"));
-        //names.emplace(STR("FSetProperty"));
-        //names.emplace(STR("USetProperty"));
-        //names.emplace(STR("FNameProperty"));
-        //names.emplace(STR("UNameProperty"));
-        //names.emplace(STR("FStrProperty"));
-        //names.emplace(STR("UStrProperty"));
-        //names.emplace(STR("FStructProperty"));
-        //names.emplace(STR("UStructProperty"));
-        //names.emplace(STR("FEnumProperty"));
-        //names.emplace(STR("UEnumProperty"));
-        //names.emplace(STR("FSoftClassProperty"));
-        //names.emplace(STR("USoftClassProperty"));
-        //names.emplace(STR("FTextProperty"));
-        //names.emplace(STR("UTextProperty"));
-
-        // Structs that have their own virtual functions and therefore need to have their offset in the vtable dumped
-        names.emplace(STR("FProperty"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
-        names.emplace(STR("UProperty"), ReplaceUPrefixWithFPrefix::Yes); // Will come up with nothing in 4.25+
-        names.emplace(STR("FField"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
-        names.emplace(STR("UField"), ReplaceUPrefixWithFPrefix::No); // Will have something in 4.25+
-        names.emplace(STR("UStruct"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("FMalloc"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("FNumericProperty"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
-        names.emplace(STR("UNumericProperty"), ReplaceUPrefixWithFPrefix::Yes); // Will have something in 4.25+
-        names.emplace(STR("FMulticastDelegateProperty"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UMulticastDelegateProperty"), ReplaceUPrefixWithFPrefix::Yes);
-        names.emplace(STR("FObjectPropertyBase"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObjectPropertyBase"), ReplaceUPrefixWithFPrefix::Yes);
-
-        dump_vtable_for_symbol(names);
     }
 
     auto VTableDumper::experimental_generate_members() -> void
@@ -1088,138 +1234,224 @@ namespace RC::UVTD
         dia_global_symbols_enum = nullptr;
     }
 
-    auto main() -> void
+    auto VTableDumper::generate_code(VTableOrMemberVars vtable_or_member_vars) -> void
     {
-        //input_handler.register_keydown_event(Input::Key::K, {Input::ModifierKey::CONTROL}, []() {
+        setup_symbol_loader();
+
+        // TODO: Figure out what to do if a legacy struct still exists alongside the new struct
+        //       An example of this is UField and FField. Both exist in 4.25+
+        //       FField & UField are special and will not be combined
+        //       All other types, that only differ by the prefix, must have their generated non-function-body files merged into one
+        //       This should be done, confirm it before removing this comment
+
+        //std::unordered_set<File::StringType> names;
+        std::unordered_map<File::StringType, SymbolNameInfo> names;
+        names.emplace(STR("UObjectBase"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("UObjectBaseUtility"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("UObject"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("UScriptStruct::ICppStructOps"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("FOutputDevice"), ReplaceUPrefixWithFPrefix::No);
+        //names.emplace(STR("UObject::Serialize"), ReplaceUPrefixWithFPrefix::No);
+
+        // Structs that don't have their own virtual functions
+        // They may be overriding base virtual functions but in that case they will be located at the same offset in the vtable as the base
+        // As a result, they don't need to have their offset in the vtable dumped
+        //names.emplace(STR("FBoolProperty")); // Will come up with nothing in <4.25
+        //names.emplace(STR("UBoolProperty")); // Will have something in 4.25+
+        //names.emplace(STR("FArrayProperty"));
+        //names.emplace(STR("UArrayProperty"));
+        //names.emplace(STR("FMapProperty"));
+        //names.emplace(STR("UMapProperty"));
+        //names.emplace(STR("FDelegateProperty"));
+        //names.emplace(STR("UDelegateProperty"));
+        //names.emplace(STR("FMulticastInlineDelegateProperty"));
+        //names.emplace(STR("UMulticastInlineDelegateProperty"));
+        //names.emplace(STR("FMulticastSparseDelegateProperty"));
+        //names.emplace(STR("UMulticastSparseDelegateProperty"));
+        //names.emplace(STR("FFieldPathProperty")); // 4.25+ only
+        //names.emplace(STR("FInterfaceProperty"));
+        //names.emplace(STR("UInterfaceProperty"));
+        //names.emplace(STR("FObjectProperty"));
+        //names.emplace(STR("UObjectProperty"));
+        //names.emplace(STR("FWeakObjectProperty"));
+        //names.emplace(STR("UWeakObjectProperty"));
+        //names.emplace(STR("FLazyObjectProperty"));
+        //names.emplace(STR("ULazyObjectProperty"));
+        //names.emplace(STR("FSoftObjectProperty"));
+        //names.emplace(STR("USoftObjectProperty"));
+        //names.emplace(STR("FClassProperty"));
+        //names.emplace(STR("UClassProperty"));
+        //names.emplace(STR("FSetProperty"));
+        //names.emplace(STR("USetProperty"));
+        //names.emplace(STR("FNameProperty"));
+        //names.emplace(STR("UNameProperty"));
+        //names.emplace(STR("FStrProperty"));
+        //names.emplace(STR("UStrProperty"));
+        //names.emplace(STR("FStructProperty"));
+        //names.emplace(STR("UStructProperty"));
+        //names.emplace(STR("FEnumProperty"));
+        //names.emplace(STR("UEnumProperty"));
+        //names.emplace(STR("FSoftClassProperty"));
+        //names.emplace(STR("USoftClassProperty"));
+        //names.emplace(STR("FTextProperty"));
+        //names.emplace(STR("UTextProperty"));
+
+        // Structs that have their own virtual functions and therefore need to have their offset in the vtable dumped
+        names.emplace(STR("FProperty"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
+        names.emplace(STR("UProperty"), ReplaceUPrefixWithFPrefix::Yes); // Will come up with nothing in 4.25+
+        names.emplace(STR("FField"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
+        names.emplace(STR("UField"), ReplaceUPrefixWithFPrefix::No); // Will have something in 4.25+
+        names.emplace(STR("UStruct"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("FMalloc"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("FNumericProperty"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
+        names.emplace(STR("UNumericProperty"), ReplaceUPrefixWithFPrefix::Yes); // Will have something in 4.25+
+        names.emplace(STR("FMulticastDelegateProperty"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("UMulticastDelegateProperty"), ReplaceUPrefixWithFPrefix::Yes);
+        names.emplace(STR("FObjectPropertyBase"), ReplaceUPrefixWithFPrefix::No);
+        names.emplace(STR("UObjectPropertyBase"), ReplaceUPrefixWithFPrefix::Yes);
+
+        if (vtable_or_member_vars == VTableOrMemberVars::VTable)
+        {
+            dump_vtable_for_symbol(names);
+        }
+        else
+        {
+            names.emplace(STR("UWorld"), ReplaceUPrefixWithFPrefix::No);
+
+            //experimental_generate_members();
+            dump_member_variable_layouts(names);
+        }
+    }
+
+    auto main(VTableOrMemberVars vtable_or_member_vars) -> void
+    {
         /**/
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_12.pdb"};
-                vtable_dumper.generate_code();
-                //vtable_dumper.experimental_generate_members();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
         //Output::send(STR("Done\n"));
         //return;
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_13.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_14.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_15.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_16.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_17.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_18.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_19.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_20.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_21.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_22.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_23.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_24.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_25.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_26.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
         //*/
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_27.pdb"};
-                vtable_dumper.generate_code();
-                //vtable_dumper.experimental_generate_members();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
         /**/
-        TRY([] {
+        TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/5_00.pdb"};
-                vtable_dumper.generate_code();
+                vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
         //*/
 
-        generate_files("GeneratedVTables");
+        generate_files("GeneratedVTables", vtable_or_member_vars);
         Output::send(STR("Code generated.\n"));
         //});
     }

@@ -19,7 +19,8 @@ namespace RC::UVTD
     extern bool processing_events;
     extern Input::Handler input_handler;
 
-    auto main() -> void;
+    enum class VTableOrMemberVars { VTable, MemberVars };
+    auto main(VTableOrMemberVars) -> void;
 
     enum class ReplaceUPrefixWithFPrefix { Yes, No };
     struct SymbolNameInfo
@@ -52,7 +53,9 @@ namespace RC::UVTD
         using EnumEntriesTypeAlias = struct EnumEntries*;
         auto dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
         auto dump_vtable_for_symbol(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
-        auto generate_code() -> void;
+        auto dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, struct Class* class_entry = nullptr) -> void;
+        auto dump_member_variable_layouts(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
+        auto generate_code(VTableOrMemberVars) -> void;
         auto experimental_generate_members() -> void;
     };
 
@@ -67,6 +70,11 @@ namespace RC::UVTD
     // ClassName => FunctionName
     extern std::unordered_map<File::StringType, EnumEntries> g_enum_entries;
 
+    struct MemberVariable
+    {
+        File::StringType type;
+        File::StringType name;
+    };
     struct FunctionBody
     {
         File::StringType name;
@@ -79,6 +87,8 @@ namespace RC::UVTD
         File::StringType class_name;
         File::StringType class_name_clean;
         std::map<uint32_t, FunctionBody> functions;
+        // Key: Variable name
+        std::unordered_map<File::StringType, MemberVariable> variables;
         uint32_t last_virtual_offset;
     };
     struct Classes
