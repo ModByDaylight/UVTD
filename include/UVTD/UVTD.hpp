@@ -74,6 +74,7 @@ namespace RC::UVTD
     {
         File::StringType type;
         File::StringType name;
+        int32_t offset;
     };
     struct FunctionBody
     {
@@ -88,7 +89,8 @@ namespace RC::UVTD
         File::StringType class_name_clean;
         std::map<uint32_t, FunctionBody> functions;
         // Key: Variable name
-        std::unordered_map<File::StringType, MemberVariable> variables;
+        std::map<File::StringType, MemberVariable> variables;
+        //std::map<int32_t, MemberVariable> variables;
         uint32_t last_virtual_offset;
     };
     struct Classes

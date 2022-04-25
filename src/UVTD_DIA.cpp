@@ -697,10 +697,14 @@ namespace RC::UVTD
 
             auto type_name = get_type_name(type);
 
-            Output::send(STR("{} {} ({}, {})\n"), type_name, symbol_name, sym_tag_to_string(type_tag), kind_to_string(kind));
+            LONG offset;
+            symbol->get_offset(&offset);
+
+            Output::send(STR("{} {} ({}, {}); 0x{:X}\n"), type_name, symbol_name, sym_tag_to_string(type_tag), kind_to_string(kind), offset);
             class_entry->variables.emplace(symbol_name, MemberVariable{
                 .type = type_name,
-                .name = symbol_name
+                .name = symbol_name,
+                .offset = offset
             });
         }
     }
@@ -1006,6 +1010,28 @@ namespace RC::UVTD
         }
         else
         {
+            if (std::filesystem::exists("GeneratedMemberVariableLayouts/generated_include"))
+            {
+                for (const auto& item : std::filesystem::directory_iterator("GeneratedMemberVariableLayouts/generated_include"))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".hpp")) { continue; }
+
+                    File::delete_file(item.path());
+                }
+            }
+
+            if (std::filesystem::exists("GeneratedMemberVariableLayouts/generated_src"))
+            {
+                for (const auto& item : std::filesystem::directory_iterator("GeneratedMemberVariableLayouts/generated_src"))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".cpp")) { continue; }
+
+                    File::delete_file(item.path());
+                }
+            }
+
             for (const auto&[pdb_name, classes] : g_class_entries)
             {
                 auto template_file = std::format(STR("MemberVarLayoutTemplates\\MemberVariableLayout_{}_Template.ini"), pdb_name);
@@ -1019,11 +1045,38 @@ namespace RC::UVTD
 
                 for (const auto&[class_name, class_entry] : classes.entries)
                 {
+                    if (class_entry.variables.empty()) { continue; }
+
+                    auto header_file = std::format(STR("GeneratedMemberVariableLayouts\\generated_include\\{}_MemberVariableLayout_{}.hpp"), pdb_name, class_entry.class_name_clean);
+                    Output::send(STR("Generating file '{}'\n"), header_file);
+                    Output::Targets<Output::NewFileDevice> header_dumper;
+                    auto& header_file_device = header_dumper.get_device<Output::NewFileDevice>();
+                    header_file_device.set_file_name_and_path(header_file);
+                    header_file_device.set_formatter([](File::StringViewType string) {
+                        return File::StringType{string};
+                    });
+
+                    auto src_file = std::format(STR("GeneratedMemberVariableLayouts\\generated_src\\{}_MemberVariableLayout_{}.cpp"), pdb_name, class_entry.class_name_clean);
+                    Output::send(STR("Generating file '{}'\n"), src_file);
+                    Output::Targets<Output::NewFileDevice> src_dumper;
+                    auto& src_file_device = src_dumper.get_device<Output::NewFileDevice>();
+                    src_file_device.set_file_name_and_path(src_file);
+                    src_file_device.set_formatter([](File::StringViewType string) {
+                        return File::StringType{string};
+                    });
+
                     ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
+                    header_dumper.send(STR("static std::unordered_map<File::StringType, int32_t> MemberOffsets;\n"));
+                    src_dumper.send(STR("std::unordered_map<File::StringType, int32_t> {}::MemberOffsets{{}};\n"), class_entry.class_name);
 
                     for (const auto&[variable_name, variable] : class_entry.variables)
                     {
-                        ini_dumper.send(STR("{}\n"), variable.name);
+                        ini_dumper.send(STR("{} = 0x{:X}\n"), variable.name, variable.offset);
+                        header_dumper.send(STR("static {} Get{}();\n"), variable.type, variable.name);
+                        src_dumper.send(STR("{} {}::Get{}()\n"), variable.type, class_entry.class_name, variable.name);
+                        src_dumper.send(STR("{\n"));
+                        src_dumper.send(STR("    return Helper::Casting::ptr_cast_deref<{}>(this, MemberOffsets[STR(\"{}\")]);\n"), variable.type, variable.name);
+                        src_dumper.send(STR("}\n\n"));
                     }
 
                     ini_dumper.send(STR("\n"));
@@ -1451,8 +1504,10 @@ namespace RC::UVTD
         });
         //*/
 
-        generate_files("GeneratedVTables", vtable_or_member_vars);
-        Output::send(STR("Code generated.\n"));
+        TRY([&] {
+            generate_files("GeneratedVTables", vtable_or_member_vars);
+            Output::send(STR("Code generated.\n"));
+        });
         //});
     }
 }
