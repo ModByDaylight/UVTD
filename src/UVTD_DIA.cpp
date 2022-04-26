@@ -23,7 +23,7 @@ namespace RC::UVTD
 {
     bool processing_events{false};
     Input::Handler input_handler{L"ConsoleWindowClass", L"UnrealWindow"};
-    std::unordered_map<File::StringType, EnumEntries> g_enum_entries{};
+    std::unordered_map<File::StringType, EnumEntry> g_enum_entries{};
     std::unordered_map<File::StringType, Classes> g_class_entries{};
 
     auto static event_loop_update() -> void
@@ -564,6 +564,22 @@ namespace RC::UVTD
         return std::format(STR("{} {}({}){};"), return_type, get_symbol_name(symbol), params, const_qualifier.empty() ? STR("") : std::format(STR(" {}"), const_qualifier));
     }
 
+    auto& get_existing_or_create_new_enum_entry(const File::StringType& symbol_name, const File::StringType& symbol_name_clean)
+    {
+        if (auto it = g_enum_entries.find(symbol_name); it != g_enum_entries.end())
+        {
+            return it->second;
+        }
+        else
+        {
+            return g_enum_entries.emplace(symbol_name, EnumEntry{
+                    .name = symbol_name,
+                    .name_clean = symbol_name_clean,
+                    .variables = {}
+            }).first->second;
+        }
+    }
+
     auto& get_existing_or_create_new_class_entry(std::filesystem::path& pdb_file, const File::StringType& symbol_name, const File::StringType& symbol_name_clean)
     {
         auto pdb_file_name = pdb_file.filename().stem();
@@ -638,7 +654,13 @@ namespace RC::UVTD
             STR("UWorld"),
     };
 
-    auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, Class* class_entry) -> void
+    static std::vector<File::StringType> UPrefixToFPrefix{
+            STR("UProperty"),
+            STR("UMulticastDelegateProperty"),
+            STR("UObjectPropertyBase"),
+    };
+
+    auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entry, Class* class_entry) -> void
     {
         auto symbol_name = get_symbol_name(symbol);
 
@@ -660,6 +682,7 @@ namespace RC::UVTD
         {
             if (valid_udt_names.find(symbol_name) == valid_udt_names.end()) { return; }
             auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean);
+            auto& local_enum_entry = get_existing_or_create_new_enum_entry(symbol_name, symbol_name_clean);
 
             CComPtr<IDiaEnumSymbols> sub_symbols;
             if (hr = symbol->findChildren(SymTagNull, nullptr, NULL, &sub_symbols); hr == S_OK)
@@ -668,7 +691,7 @@ namespace RC::UVTD
                 ULONG num_symbols_fetched{};
                 while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
                 {
-                    dump_member_variable_layouts(sub_symbol, ReplaceUPrefixWithFPrefix::No, &local_class_entry);
+                    dump_member_variable_layouts(sub_symbol, ReplaceUPrefixWithFPrefix::No, &local_enum_entry, &local_class_entry);
                 }
                 sub_symbol = nullptr;
             }
@@ -676,6 +699,7 @@ namespace RC::UVTD
         }
         else if (sym_tag == SymTagData)
         {
+            if (!enum_entry) { throw std::runtime_error{"enum_entries is nullptr"}; }
             if (!class_entry) { throw std::runtime_error{"class_entry is nullptr"}; }
 
             DWORD kind;
@@ -697,8 +721,93 @@ namespace RC::UVTD
 
             auto type_name = get_type_name(type);
 
+            if (type_name.find(STR("TTuple")) != type_name.npos ||
+                type_name.find(STR("FUnversionedStructSchema")) != type_name.npos ||
+                type_name.find(STR("ELifetimeCondition")) != type_name.npos ||
+                type_name.find(STR("UAISystemBase")) != type_name.npos ||
+                type_name.find(STR("FLevelCollection")) != type_name.npos ||
+                type_name.find(STR("FThreadSafeCounter")) != type_name.npos ||
+                type_name.find(STR("FWorldAsyncTraceState")) != type_name.npos ||
+                type_name.find(STR("FDelegateHandle")) != type_name.npos ||
+                type_name.find(STR("AGameMode")) != type_name.npos ||
+                type_name.find(STR("UAvoidanceManager")) != type_name.npos ||
+                type_name.find(STR("FOnBeginTearingDownEvent")) != type_name.npos ||
+                type_name.find(STR("UBlueprint")) != type_name.npos ||
+                type_name.find(STR("UCanvas")) != type_name.npos ||
+                type_name.find(STR("UActorComponent")) != type_name.npos ||
+                type_name.find(STR("AController")) != type_name.npos ||
+                type_name.find(STR("ULevel")) != type_name.npos ||
+                type_name.find(STR("FPhysScene_Chaos")) != type_name.npos ||
+                type_name.find(STR("APhysicsVolume")) != type_name.npos ||
+                type_name.find(STR("UDemoNetDriver")) != type_name.npos ||
+                type_name.find(STR("FEndPhysicsTickFunction")) != type_name.npos ||
+                type_name.find(STR("FFXSystemInterface")) != type_name.npos ||
+                type_name.find(STR("ERHIFeatureLevel")) != type_name.npos ||
+                type_name.find(STR("EFlushLevelStreamingType")) != type_name.npos ||
+                type_name.find(STR("ULineBatchComponent")) != type_name.npos ||
+                type_name.find(STR("AGameState")) != type_name.npos ||
+                type_name.find(STR("FOnGameStateSetEvent")) != type_name.npos ||
+                type_name.find(STR("AAudioVolume")) != type_name.npos ||
+                type_name.find(STR("FLatentActionManager")) != type_name.npos ||
+                type_name.find(STR("FOnLevelsChangedEvent")) != type_name.npos ||
+                type_name.find(STR("AParticleEventManager")) != type_name.npos ||
+                type_name.find(STR("UNavigationSystem")) != type_name.npos ||
+                type_name.find(STR("UNetDriver")) != type_name.npos ||
+                type_name.find(STR("AGameNetworkManager")) != type_name.npos ||
+                type_name.find(STR("ETravelType")) != type_name.npos ||
+                type_name.find(STR("FDefaultDelegateUserPolicy")) != type_name.npos ||
+                type_name.find(STR("TMulticastDelegate")) != type_name.npos ||
+                type_name.find(STR("FActorsInitializedParams")) != type_name.npos ||
+                type_name.find(STR("FOnBeginPostProcessSettings")) != type_name.npos ||
+                type_name.find(STR("FIntVector")) != type_name.npos ||
+                type_name.find(STR("UGameInstance")) != type_name.npos ||
+                type_name.find(STR("FWorldPSCPool")) != type_name.npos ||
+                type_name.find(STR("UMaterialParameterCollectionInstance")) != type_name.npos ||
+                type_name.find(STR("FParticlePerfStats")) != type_name.npos ||
+                type_name.find(STR("FWorldInGamePerformanceTrackers")) != type_name.npos ||
+                type_name.find(STR("UPhysicsCollisionHandler")) != type_name.npos ||
+                type_name.find(STR("UPhysicsFieldComponent")) != type_name.npos ||
+                type_name.find(STR("FPhysScene")) != type_name.npos ||
+                type_name.find(STR("APlayerController")) != type_name.npos ||
+                type_name.find(STR("IInterface_PostProcessVolume")) != type_name.npos ||
+                type_name.find(STR("FOnTickFlushEvent")) != type_name.npos ||
+                type_name.find(STR("FSceneInterface")) != type_name.npos ||
+                type_name.find(STR("FStartAsyncSimulationFunction")) != type_name.npos ||
+                type_name.find(STR("FStartPhysicsTickFunction")) != type_name.npos ||
+                type_name.find(STR("FOnNetTickEvent")) != type_name.npos ||
+                type_name.find(STR("ETickingGroup")) != type_name.npos ||
+                type_name.find(STR("FTickTaskLevel")) != type_name.npos ||
+                type_name.find(STR("FTimerManager")) != type_name.npos ||
+                type_name.find(STR("FURL")) != type_name.npos ||
+                type_name.find(STR("UWorldComposition")) != type_name.npos ||
+                type_name.find(STR("EWorldType")) != type_name.npos ||
+                type_name.find(STR("FSubsystemCollection")) != type_name.npos ||
+                type_name.find(STR("UWorldSubsystem")) != type_name.npos ||
+                type_name.find(STR("FStreamingLevelsToConsider")) != type_name.npos ||
+                type_name.find(STR("APawn")) != type_name.npos ||
+                type_name.find(STR("ACameraActor")) != type_name.npos)
+            {
+                // These types are not currently supported in RC::Unreal, so we must prevent code from being generated.
+                return;
+            }
+
+            for (const auto& UPrefixed : UPrefixToFPrefix)
+            {
+                for (size_t i = type_name.find(UPrefixed); i != type_name.npos; i = type_name.find(UPrefixed))
+                {
+                    type_name.replace(i, 1, STR("F"));
+                    ++i;
+                }
+            }
+
             LONG offset;
             symbol->get_offset(&offset);
+
+            enum_entry->variables.emplace(symbol_name, MemberVariable{
+                .type = type_name,
+                .name = symbol_name,
+                .offset = offset
+            });
 
             Output::send(STR("{} {} ({}, {}); 0x{:X}\n"), type_name, symbol_name, sym_tag_to_string(type_tag), kind_to_string(kind), offset);
             class_entry->variables.emplace(symbol_name, MemberVariable{
@@ -857,8 +966,6 @@ namespace RC::UVTD
 
             //Output::send(STR("Dumping virtual function for symbol '{}', tag: '{}', offset: '{}'\n"), symbol_name, sym_tag_to_string(sym_tag), offset_in_vtable / 8);
 
-            enum_entries->entries.emplace(symbol_name_clean);
-
             auto& function = class_entry->functions[offset_in_vtable];
             function.name = symbol_name_clean;
             function.signature = generate_function_signature(symbol);
@@ -912,6 +1019,17 @@ namespace RC::UVTD
 
     auto static generate_files(const std::filesystem::path& output_dir, VTableOrMemberVars vtable_or_member_vars) -> void
     {
+        static std::filesystem::path vtable_gen_output_path = "GeneratedVTables";
+        static std::filesystem::path vtable_gen_output_include_path = vtable_gen_output_path / "generated_include";
+        static std::filesystem::path vtable_gen_output_src_path = vtable_gen_output_path / "generated_src";
+        static std::filesystem::path vtable_gen_output_function_bodies_path = vtable_gen_output_include_path / "FunctionBodies";
+        static std::filesystem::path vtable_templates_output_path = "VTableLayoutTemplates";
+        static std::filesystem::path member_variable_layouts_gen_output_path = "GeneratedMemberVariableLayouts";
+        static std::filesystem::path member_variable_layouts_gen_output_include_path = member_variable_layouts_gen_output_path / "generated_include";
+        static std::filesystem::path member_variable_layouts_gen_output_src_path = member_variable_layouts_gen_output_path / "generated_src";
+        static std::filesystem::path member_variable_layouts_gen_function_bodies_path = member_variable_layouts_gen_output_include_path / "FunctionBodies";
+        static std::filesystem::path member_variable_layouts_templates_output_path = "MemberVarLayoutTemplates";
+
         if (!std::filesystem::exists(output_dir))
         {
             std::filesystem::create_directory(output_dir);
@@ -919,9 +1037,9 @@ namespace RC::UVTD
 
         if (vtable_or_member_vars == VTableOrMemberVars::VTable)
         {
-            if (std::filesystem::exists(output_dir / "generated_include"))
+            if (std::filesystem::exists(vtable_gen_output_include_path))
             {
-                for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_include"))
+                for (const auto& item : std::filesystem::directory_iterator(vtable_gen_output_include_path))
                 {
                     if (item.is_directory()) { continue; }
                     if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
@@ -930,23 +1048,23 @@ namespace RC::UVTD
                 }
             }
 
-            if (std::filesystem::exists(output_dir / "generated_include/FunctionBodies"))
+            if (std::filesystem::exists(vtable_gen_output_function_bodies_path))
             {
-                for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_include/FunctionBodies"))
+                for (const auto& item : std::filesystem::directory_iterator(vtable_gen_output_function_bodies_path))
                 {
                     if (item.is_directory()) { continue; }
-                    if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
+                    if (item.path().extension() != STR(".hpp")) { continue; }
 
                     File::delete_file(item.path());
                 }
             }
 
-            if (std::filesystem::exists(output_dir / "generated_src"))
+            if (std::filesystem::exists(vtable_gen_output_src_path))
             {
-                for (const auto& item : std::filesystem::directory_iterator(output_dir / "generated_src"))
+                for (const auto& item : std::filesystem::directory_iterator(vtable_gen_output_src_path))
                 {
                     if (item.is_directory()) { continue; }
-                    if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
+                    if (item.path().extension() != STR(".cpp")) { continue; }
 
                     File::delete_file(item.path());
                 }
@@ -959,7 +1077,7 @@ namespace RC::UVTD
                     Output::send(STR("Generating file '{}_VTableOffsets_{}_FunctionBody.cpp'\n"), pdb_name, class_entry.class_name_clean);
                     Output::Targets<Output::NewFileDevice> function_body_dumper;
                     auto& function_body_file_device = function_body_dumper.get_device<Output::NewFileDevice>();
-                    function_body_file_device.set_file_name_and_path(output_dir / std::format(STR("generated_include/FunctionBodies/{}_VTableOffsets_{}_FunctionBody.cpp"), pdb_name, class_name));
+                    function_body_file_device.set_file_name_and_path(vtable_gen_output_function_bodies_path / std::format(STR("{}_VTableOffsets_{}_FunctionBody.cpp"), pdb_name, class_name));
                     function_body_file_device.set_formatter([](File::StringViewType string) {
                         return File::StringType{string};
                     });
@@ -982,11 +1100,11 @@ namespace RC::UVTD
 
             for (const auto&[pdb_name, classes] : g_class_entries)
             {
-                auto template_file = std::format(STR("VTableLayoutTemplates\\VTableLayout_{}_Template.ini"), pdb_name);
+                auto template_file = std::format(STR("VTableLayout_{}_Template.ini"), pdb_name);
                 Output::send(STR("Generating file '{}'\n"), template_file);
                 Output::Targets<Output::NewFileDevice> ini_dumper;
                 auto& ini_file_device = ini_dumper.get_device<Output::NewFileDevice>();
-                ini_file_device.set_file_name_and_path(template_file);
+                ini_file_device.set_file_name_and_path(vtable_templates_output_path / template_file);
                 ini_file_device.set_formatter([](File::StringViewType string) {
                     return File::StringType{string};
                 });
@@ -1010,9 +1128,9 @@ namespace RC::UVTD
         }
         else
         {
-            if (std::filesystem::exists("GeneratedMemberVariableLayouts/generated_include"))
+            if (std::filesystem::exists(member_variable_layouts_gen_output_include_path))
             {
-                for (const auto& item : std::filesystem::directory_iterator("GeneratedMemberVariableLayouts/generated_include"))
+                for (const auto& item : std::filesystem::directory_iterator(member_variable_layouts_gen_output_include_path))
                 {
                     if (item.is_directory()) { continue; }
                     if (item.path().extension() != STR(".hpp")) { continue; }
@@ -1021,9 +1139,20 @@ namespace RC::UVTD
                 }
             }
 
-            if (std::filesystem::exists("GeneratedMemberVariableLayouts/generated_src"))
+            if (std::filesystem::exists(member_variable_layouts_gen_function_bodies_path))
             {
-                for (const auto& item : std::filesystem::directory_iterator("GeneratedMemberVariableLayouts/generated_src"))
+                for (const auto& item : std::filesystem::directory_iterator(member_variable_layouts_gen_function_bodies_path))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".hpp") && item.path().extension() != STR(".cpp")) { continue; }
+
+                    File::delete_file(item.path());
+                }
+            }
+
+            if (std::filesystem::exists(member_variable_layouts_gen_output_src_path))
+            {
+                for (const auto& item : std::filesystem::directory_iterator(member_variable_layouts_gen_output_src_path))
                 {
                     if (item.is_directory()) { continue; }
                     if (item.path().extension() != STR(".cpp")) { continue; }
@@ -1034,11 +1163,11 @@ namespace RC::UVTD
 
             for (const auto&[pdb_name, classes] : g_class_entries)
             {
-                auto template_file = std::format(STR("MemberVarLayoutTemplates\\MemberVariableLayout_{}_Template.ini"), pdb_name);
+                auto template_file = std::format(STR("MemberVariableLayout_{}_Template.ini"), pdb_name);
                 Output::send(STR("Generating file '{}'\n"), template_file);
                 Output::Targets<Output::NewFileDevice> ini_dumper;
                 auto& ini_file_device = ini_dumper.get_device<Output::NewFileDevice>();
-                ini_file_device.set_file_name_and_path(template_file);
+                ini_file_device.set_file_name_and_path(member_variable_layouts_templates_output_path / template_file);
                 ini_file_device.set_formatter([](File::StringViewType string) {
                     return File::StringType{string};
                 });
@@ -1047,39 +1176,71 @@ namespace RC::UVTD
                 {
                     if (class_entry.variables.empty()) { continue; }
 
-                    auto header_file = std::format(STR("GeneratedMemberVariableLayouts\\generated_include\\{}_MemberVariableLayout_{}.hpp"), pdb_name, class_entry.class_name_clean);
-                    Output::send(STR("Generating file '{}'\n"), header_file);
-                    Output::Targets<Output::NewFileDevice> header_dumper;
-                    auto& header_file_device = header_dumper.get_device<Output::NewFileDevice>();
-                    header_file_device.set_file_name_and_path(header_file);
-                    header_file_device.set_formatter([](File::StringViewType string) {
-                        return File::StringType{string};
-                    });
-
-                    auto src_file = std::format(STR("GeneratedMemberVariableLayouts\\generated_src\\{}_MemberVariableLayout_{}.cpp"), pdb_name, class_entry.class_name_clean);
-                    Output::send(STR("Generating file '{}'\n"), src_file);
-                    Output::Targets<Output::NewFileDevice> src_dumper;
-                    auto& src_file_device = src_dumper.get_device<Output::NewFileDevice>();
-                    src_file_device.set_file_name_and_path(src_file);
-                    src_file_device.set_formatter([](File::StringViewType string) {
+                    auto default_setter_src_file = member_variable_layouts_gen_function_bodies_path / std::format(STR("{}_MemberVariableLayout_DefaultSetter_{}.cpp"), pdb_name, class_entry.class_name_clean);
+                    Output::send(STR("Generating file '{}'\n"), default_setter_src_file.wstring());
+                    Output::Targets<Output::NewFileDevice> default_setter_src_dumper;
+                    auto& default_setter_src_file_device = default_setter_src_dumper.get_device<Output::NewFileDevice>();
+                    default_setter_src_file_device.set_file_name_and_path(default_setter_src_file);
+                    default_setter_src_file_device.set_formatter([](File::StringViewType string) {
                         return File::StringType{string};
                     });
 
                     ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
-                    header_dumper.send(STR("static std::unordered_map<File::StringType, int32_t> MemberOffsets;\n"));
-                    src_dumper.send(STR("std::unordered_map<File::StringType, int32_t> {}::MemberOffsets{{}};\n"), class_entry.class_name);
 
                     for (const auto&[variable_name, variable] : class_entry.variables)
                     {
                         ini_dumper.send(STR("{} = 0x{:X}\n"), variable.name, variable.offset);
-                        header_dumper.send(STR("static {} Get{}();\n"), variable.type, variable.name);
-                        src_dumper.send(STR("{} {}::Get{}()\n"), variable.type, class_entry.class_name, variable.name);
-                        src_dumper.send(STR("{\n"));
-                        src_dumper.send(STR("    return Helper::Casting::ptr_cast_deref<{}>(this, MemberOffsets[STR(\"{}\")]);\n"), variable.type, variable.name);
-                        src_dumper.send(STR("}\n\n"));
+                        default_setter_src_dumper.send(STR("if (auto it = {}::MemberOffsets.find(STR(\"{}\")); it == {}::MemberOffsets.end())\n"), class_entry.class_name, variable.name, class_entry.class_name);
+                        default_setter_src_dumper.send(STR("{\n"));
+                        default_setter_src_dumper.send(STR("    {}::MemberOffsets.emplace(STR(\"{}\"), 0x{:X});\n"), class_entry.class_name, variable.name, variable.offset);
+                        default_setter_src_dumper.send(STR("}\n\n"));
                     }
 
                     ini_dumper.send(STR("\n"));
+                }
+            }
+
+            for (const auto&[class_name, enum_entry] : g_enum_entries)
+            {
+                if (enum_entry.variables.empty()) { continue; }
+
+                auto wrapper_header_file = member_variable_layouts_gen_output_include_path / std::format(STR("MemberVariableLayout_HeaderWrapper_{}.hpp"), enum_entry.name_clean);
+                Output::send(STR("Generating file '{}'\n"), wrapper_header_file.wstring());
+                Output::Targets<Output::NewFileDevice> header_wrapper_dumper;
+                auto& wrapper_header_file_device = header_wrapper_dumper.get_device<Output::NewFileDevice>();
+                wrapper_header_file_device.set_file_name_and_path(wrapper_header_file);
+                wrapper_header_file_device.set_formatter([](File::StringViewType string) {
+                    return File::StringType{string};
+                });
+
+                auto wrapper_src_file = member_variable_layouts_gen_output_include_path / std::format(STR("MemberVariableLayout_SrcWrapper_{}.hpp"), enum_entry.name_clean);
+                Output::send(STR("Generating file '{}'\n"), wrapper_src_file.wstring());
+                Output::Targets<Output::NewFileDevice> wrapper_src_dumper;
+                auto& wrapper_src_file_device = wrapper_src_dumper.get_device<Output::NewFileDevice>();
+                wrapper_src_file_device.set_file_name_and_path(wrapper_src_file);
+                wrapper_src_file_device.set_formatter([](File::StringViewType string) {
+                    return File::StringType{string};
+                });
+
+                header_wrapper_dumper.send(STR("static std::unordered_map<File::StringType, int32_t> MemberOffsets;\n"));
+                wrapper_src_dumper.send(STR("std::unordered_map<File::StringType, int32_t> {}::MemberOffsets{{}};\n"), enum_entry.name);
+
+                for (const auto&[variable_name, variable] : enum_entry.variables)
+                {
+                    header_wrapper_dumper.send(STR("{} Get{}();\n"), variable.type, variable.name);
+                    header_wrapper_dumper.send(STR("const {} Get{}() const;\n"), variable.type, variable.name);
+                    wrapper_src_dumper.send(STR("{} {}::Get{}()\n"), variable.type, enum_entry.name, variable.name);
+                    wrapper_src_dumper.send(STR("{\n"));
+                    wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), variable.name);
+                    wrapper_src_dumper.send(STR("    if (offset == MemberOffsets.end()) {{ throw std::runtime_error{{\"Tried getting member variable '{}::{}' that doesn't exist in this engine version.\"}}; }}\n"), enum_entry.name, variable.name);
+                    wrapper_src_dumper.send(STR("    return Helper::Casting::ptr_cast_deref<{}>(this, offset->second);\n"), variable.type);
+                    wrapper_src_dumper.send(STR("}\n"));
+                    wrapper_src_dumper.send(STR("const {} {}::Get{}() const\n"), variable.type, enum_entry.name, variable.name);
+                    wrapper_src_dumper.send(STR("{\n"));
+                    wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), variable.name);
+                    wrapper_src_dumper.send(STR("    if (offset == MemberOffsets.end()) {{ throw std::runtime_error{{\"Tried getting member variable '{}::{}' that doesn't exist in this engine version.\"}}; }}\n"), enum_entry.name, variable.name);
+                    wrapper_src_dumper.send(STR("    return Helper::Casting::ptr_cast_deref<const {}>(this, offset->second);\n"), variable.type);
+                    wrapper_src_dumper.send(STR("}\n\n"));
                 }
             }
         }

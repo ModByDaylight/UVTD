@@ -50,25 +50,14 @@ namespace RC::UVTD
 
     public:
         auto setup_symbol_loader() -> void;
-        using EnumEntriesTypeAlias = struct EnumEntries*;
+        using EnumEntriesTypeAlias = struct EnumEntry*;
         auto dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
         auto dump_vtable_for_symbol(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
-        auto dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, struct Class* class_entry = nullptr) -> void;
+        auto dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
         auto dump_member_variable_layouts(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
         auto generate_code(VTableOrMemberVars) -> void;
         auto experimental_generate_members() -> void;
     };
-
-    struct EnumEntry
-    {
-        File::StringType name;
-    };
-    struct EnumEntries
-    {
-        std::set<File::StringType> entries;
-    };
-    // ClassName => FunctionName
-    extern std::unordered_map<File::StringType, EnumEntries> g_enum_entries;
 
     struct MemberVariable
     {
@@ -76,6 +65,22 @@ namespace RC::UVTD
         File::StringType name;
         int32_t offset;
     };
+
+    struct EnumEntry
+    {
+        File::StringType name;
+        File::StringType name_clean;
+        std::map<File::StringType, MemberVariable> variables;
+    };
+
+    struct EnumEntries
+    {
+        //std::set<File::StringType> entries;
+        std::map<File::StringType, EnumEntry> entries;
+    };
+    // ClassName => FunctionName
+    extern std::unordered_map<File::StringType, EnumEntry> g_enum_entries;
+
     struct FunctionBody
     {
         File::StringType name;
