@@ -639,6 +639,7 @@ namespace RC::UVTD
             STR("UObjectBaseUtility"),
             STR("UObject"),
             STR("UStruct"),
+            STR("UScriptStruct"),
             STR("FOutputDevice"),
             STR("FMalloc"),
             STR("UField"),
@@ -651,6 +652,12 @@ namespace RC::UVTD
             STR("UMulticastDelegateProperty"),
             STR("FObjectPropertyBase"),
             STR("UObjectPropertyBase"),
+            STR("UStructProperty"),
+            STR("FStructProperty"),
+            STR("UArrayProperty"),
+            STR("FArrayProperty"),
+            STR("UMapProperty"),
+            STR("FMapProperty"),
             STR("UWorld"),
     };
 
@@ -658,6 +665,9 @@ namespace RC::UVTD
             STR("UProperty"),
             STR("UMulticastDelegateProperty"),
             STR("UObjectPropertyBase"),
+            STR("UStructProperty"),
+            STR("UArrayProperty"),
+            STR("UMapProperty"),
     };
 
     auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entry, Class* class_entry) -> void
@@ -667,6 +677,8 @@ namespace RC::UVTD
         // Replace 'U' with 'F' for everything except UField & FField
         if (replace_u_prefix_with_f_prefix == ReplaceUPrefixWithFPrefix::Yes)
         {
+            // Don't generate anything for this variable if this is 4.25+ and it has a 'U' prefix and we've been requested to replace the prefix with an 'F' prefix.
+            if (is_425_plus && !symbol_name.empty() && symbol_name[0] == STR('U')) { return; }
             symbol_name.replace(0, 1, STR("F"));
         }
 
@@ -785,7 +797,10 @@ namespace RC::UVTD
                 type_name.find(STR("UWorldSubsystem")) != type_name.npos ||
                 type_name.find(STR("FStreamingLevelsToConsider")) != type_name.npos ||
                 type_name.find(STR("APawn")) != type_name.npos ||
-                type_name.find(STR("ACameraActor")) != type_name.npos)
+                type_name.find(STR("ACameraActor")) != type_name.npos ||
+                type_name.find(STR("EMapPropertyFlags")) != type_name.npos ||
+                type_name.find(STR("FScriptMapLayout")) != type_name.npos ||
+                type_name.find(STR("EArrayPropertyFlags")) != type_name.npos)
             {
                 // These types are not currently supported in RC::Unreal, so we must prevent code from being generated.
                 return;
@@ -1017,6 +1032,18 @@ namespace RC::UVTD
         }
     }
 
+    static std::unordered_map<File::StringType, std::unordered_set<File::StringType>> g_private_variables{
+            {
+                    STR("FField"),
+                    {
+                            STR("ClassPrivate"),
+                            STR("NamePrivate"),
+                            STR("Next"),
+                            STR("Owner"),
+                    }
+            },
+    };
+
     auto static generate_files(const std::filesystem::path& output_dir, VTableOrMemberVars vtable_or_member_vars) -> void
     {
         static std::filesystem::path vtable_gen_output_path = "GeneratedVTables";
@@ -1222,13 +1249,26 @@ namespace RC::UVTD
                     return File::StringType{string};
                 });
 
-                header_wrapper_dumper.send(STR("static std::unordered_map<File::StringType, int32_t> MemberOffsets;\n"));
-                wrapper_src_dumper.send(STR("std::unordered_map<File::StringType, int32_t> {}::MemberOffsets{{}};\n"), enum_entry.name);
+                header_wrapper_dumper.send(STR("static std::unordered_map<File::StringType, int32_t> MemberOffsets;\n\n"));
+                wrapper_src_dumper.send(STR("std::unordered_map<File::StringType, int32_t> {}::MemberOffsets{{}};\n\n"), enum_entry.name);
+
+                auto private_variables_for_class = g_private_variables.find(enum_entry.name);
 
                 for (const auto&[variable_name, variable] : enum_entry.variables)
                 {
-                    header_wrapper_dumper.send(STR("{} Get{}();\n"), variable.type, variable.name);
-                    header_wrapper_dumper.send(STR("const {} Get{}() const;\n"), variable.type, variable.name);
+                    bool is_private{private_variables_for_class != g_private_variables.end() && private_variables_for_class->second.find(variable.name) != private_variables_for_class->second.end()};
+
+                    if (is_private)
+                    {
+                        header_wrapper_dumper.send(STR("private:\n"));
+                    }
+                    else
+                    {
+                        header_wrapper_dumper.send(STR("public:\n"));
+                    }
+
+                    header_wrapper_dumper.send(STR("    {} Get{}();\n"), variable.type, variable.name);
+                    header_wrapper_dumper.send(STR("    const {} Get{}() const;\n\n"), variable.type, variable.name);
                     wrapper_src_dumper.send(STR("{} {}::Get{}()\n"), variable.type, enum_entry.name, variable.name);
                     wrapper_src_dumper.send(STR("{\n"));
                     wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), variable.name);
@@ -1530,7 +1570,14 @@ namespace RC::UVTD
         }
         else
         {
+            names.emplace(STR("UScriptStruct"), ReplaceUPrefixWithFPrefix::No);
             names.emplace(STR("UWorld"), ReplaceUPrefixWithFPrefix::No);
+            names.emplace(STR("UStructProperty"), ReplaceUPrefixWithFPrefix::Yes);
+            names.emplace(STR("FStructProperty"), ReplaceUPrefixWithFPrefix::No);
+            names.emplace(STR("UArrayProperty"), ReplaceUPrefixWithFPrefix::Yes);
+            names.emplace(STR("FArrayProperty"), ReplaceUPrefixWithFPrefix::No);
+            names.emplace(STR("UMapProperty"), ReplaceUPrefixWithFPrefix::Yes);
+            names.emplace(STR("FMapProperty"), ReplaceUPrefixWithFPrefix::No);
 
             //experimental_generate_members();
             dump_member_variable_layouts(names);
@@ -1651,6 +1698,14 @@ namespace RC::UVTD
         TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_27.pdb"};
+                vtable_dumper.generate_code(vtable_or_member_vars);
+            }
+            CoUninitialize();
+        });
+        // WITH_CASE_PRESERVING_NAMES
+        TRY([&] {
+            {
+                VTableDumper vtable_dumper{"PDBs/4_27_CasePreserving.pdb"};
                 vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();

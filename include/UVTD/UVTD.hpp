@@ -10,6 +10,7 @@
 #include <File/File.hpp>
 #include <Input/Handler.hpp>
 #include <Function/Function.hpp>
+#include <DynamicOutput/DynamicOutput.hpp>
 
 #include <dia2.h>
 #include <atlbase.h>
@@ -41,12 +42,19 @@ namespace RC::UVTD
         CComPtr<IDiaSession> dia_session;
         CComPtr<IDiaSymbol> dia_global_symbol;
         CComPtr<IDiaEnumSymbols> dia_global_symbols_enum;
+        bool is_425_plus;
 
         bool are_symbols_cached{};
 
     public:
         VTableDumper() = delete;
-        explicit VTableDumper(std::filesystem::path pdb_file) : pdb_file(std::move(pdb_file)) {}
+        explicit VTableDumper(std::filesystem::path pdb_file) : pdb_file(std::move(pdb_file))
+        {
+            auto version_string = this->pdb_file.filename().stem().string();
+            auto major_version = std::atoi(version_string.substr(0, 1).c_str());
+            auto minor_version = std::atoi(version_string.substr(2).c_str());
+            is_425_plus = (major_version > 4) || (major_version == 4 && minor_version >= 25);
+        }
 
     public:
         auto setup_symbol_loader() -> void;
