@@ -26,6 +26,96 @@ namespace RC::UVTD
     std::unordered_map<File::StringType, EnumEntry> g_enum_entries{};
     std::unordered_map<File::StringType, Classes> g_class_entries{};
 
+    enum class ValidForVTable { Yes, No };
+    enum class ValidForMemberVars { Yes, No };
+
+    struct ObjectItem
+    {
+        File::StringType name{};
+        ValidForVTable valid_for_v_table{};
+        ValidForMemberVars valid_for_member_vars{};
+        ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix{ReplaceUPrefixWithFPrefix::No};
+    };
+    static std::vector<ObjectItem> s_object_items{
+            {STR("UObjectBase"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UObjectBaseUtility"), ValidForVTable::Yes, ValidForMemberVars::No, ReplaceUPrefixWithFPrefix::No},
+            {STR("UObject"), ValidForVTable::Yes, ValidForMemberVars::No, ReplaceUPrefixWithFPrefix::No},
+            {STR("UScriptStruct::ICppStructOps"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("FOutputDevice"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UStruct"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("FMalloc"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("FField"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UField"), ValidForVTable::Yes, ValidForMemberVars::No, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FMulticastDelegateProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UMulticastDelegateProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FObjectPropertyBase"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UObjectPropertyBase"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+
+            {STR("UScriptStruct"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UWorld"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UFunction"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UClass"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("FStructProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UStructProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FArrayProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UArrayProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FMapProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UMapProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FBoolProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UBoolProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("FByteProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
+            {STR("UByteProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+    };
+
+    static std::unordered_set<File::StringType> valid_udt_names{
+            STR("UScriptStruct::ICppStructOps"),
+            STR("UObjectBase"),
+            STR("UObjectBaseUtility"),
+            STR("UObject"),
+            STR("UStruct"),
+            STR("UScriptStruct"),
+            STR("FOutputDevice"),
+            STR("FMalloc"),
+            STR("UField"),
+            STR("FField"),
+            STR("FProperty"),
+            STR("UProperty"),
+            STR("FNumericProperty"),
+            STR("UNumericProperty"),
+            STR("FMulticastDelegateProperty"),
+            STR("UMulticastDelegateProperty"),
+            STR("FObjectPropertyBase"),
+            STR("UObjectPropertyBase"),
+            STR("UStructProperty"),
+            STR("FStructProperty"),
+            STR("UArrayProperty"),
+            STR("FArrayProperty"),
+            STR("UMapProperty"),
+            STR("FMapProperty"),
+            STR("UWorld"),
+            STR("UFunction"),
+            STR("FBoolProperty"),
+            STR("UClass"),
+            STR("UBoolProperty"),
+            STR("FByteProperty"),
+            STR("UByteProperty"),
+    };
+
+    static std::vector<File::StringType> UPrefixToFPrefix{
+            STR("UProperty"),
+            STR("UMulticastDelegateProperty"),
+            STR("UObjectPropertyBase"),
+            STR("UStructProperty"),
+            STR("UArrayProperty"),
+            STR("UMapProperty"),
+            STR("UBoolProperty"),
+            STR("UByteProperty"),
+    };
+
     auto static event_loop_update() -> void
     {
         for (processing_events = true; processing_events;)
@@ -307,53 +397,47 @@ namespace RC::UVTD
         DWORD sym_tag;
         symbol->get_symTag(&sym_tag);
 
-        CComPtr<IDiaSymbol> real_symbol;
-
-        HRESULT hr;
-        if (sym_tag == SymTagFunctionType || sym_tag == SymTagPointerType)
+        if (sym_tag == SymTagPointerType ||
+            sym_tag == SymTagFunctionType)
         {
-            if (hr = symbol->get_type(&real_symbol); hr != S_OK)
+            CComPtr<IDiaSymbol> type_symbol;
+            if (auto hr = symbol->get_type(&type_symbol); hr != S_OK)
             {
                 throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
             }
+            return get_symbol_name(type_symbol);
+        }
+        else if (sym_tag == SymTagBaseType)
+        {
+            name.append(base_type_to_string(symbol));
         }
         else
         {
-            // Default
-            real_symbol = symbol;
-        }
-
-        DWORD real_sym_tag;
-        real_symbol->get_symTag(&real_sym_tag);
-
-        if (real_sym_tag == SymTagBaseType)
-        {
-            name.append(base_type_to_string(real_symbol));
-        }
-        else
-        {
-            if (real_sym_tag == SymTagPointerType)
+            if (sym_tag == SymTagData)
             {
-                if (hr = real_symbol->get_type(&real_symbol); hr != S_OK)
+                CComPtr<IDiaSymbol> type_symbol;
+                if (auto hr = symbol->get_classParent(&type_symbol); hr != S_OK)
                 {
                     throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
                 }
 
-                real_symbol->get_symTag(&real_sym_tag);
-                if (real_sym_tag == SymTagBaseType)
+                DWORD type_sym_tag;
+                type_symbol->get_symTag(&type_sym_tag);
+                BSTR name_buffer;
+                if (auto hr = symbol->get_name(&name_buffer); hr == S_OK)
                 {
-                    name.append(base_type_to_string(real_symbol));
+                    name = name_buffer;
                 }
             }
 
             BSTR name_buffer;
-            if (hr = real_symbol->get_name(&name_buffer); hr == S_OK)
+            if (auto hr = symbol->get_name(&name_buffer); hr == S_OK)
             {
                 name = name_buffer;
             }
 
             BSTR undecorated_name_buffer;
-            if (hr = real_symbol->get_undecoratedName(&undecorated_name_buffer); hr == S_OK)
+            if (auto hr = symbol->get_undecoratedName(&undecorated_name_buffer); hr == S_OK)
             {
                 name = undecorated_name_buffer;
             }
@@ -361,6 +445,7 @@ namespace RC::UVTD
 
         if (name.empty())
         {
+            Output::send(STR("Name not found. sym_tag: {}\n"), sym_tag_to_string(sym_tag));
             name = STR("NoName");
         }
 
@@ -633,43 +718,6 @@ namespace RC::UVTD
         }
     }
 
-    static std::unordered_set<File::StringType> valid_udt_names{
-            STR("UScriptStruct::ICppStructOps"),
-            STR("UObjectBase"),
-            STR("UObjectBaseUtility"),
-            STR("UObject"),
-            STR("UStruct"),
-            STR("UScriptStruct"),
-            STR("FOutputDevice"),
-            STR("FMalloc"),
-            STR("UField"),
-            STR("FField"),
-            STR("FProperty"),
-            STR("UProperty"),
-            STR("FNumericProperty"),
-            STR("UNumericProperty"),
-            STR("FMulticastDelegateProperty"),
-            STR("UMulticastDelegateProperty"),
-            STR("FObjectPropertyBase"),
-            STR("UObjectPropertyBase"),
-            STR("UStructProperty"),
-            STR("FStructProperty"),
-            STR("UArrayProperty"),
-            STR("FArrayProperty"),
-            STR("UMapProperty"),
-            STR("FMapProperty"),
-            STR("UWorld"),
-    };
-
-    static std::vector<File::StringType> UPrefixToFPrefix{
-            STR("UProperty"),
-            STR("UMulticastDelegateProperty"),
-            STR("UObjectPropertyBase"),
-            STR("UStructProperty"),
-            STR("UArrayProperty"),
-            STR("UMapProperty"),
-    };
-
     auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entry, Class* class_entry) -> void
     {
         auto symbol_name = get_symbol_name(symbol);
@@ -800,7 +848,16 @@ namespace RC::UVTD
                 type_name.find(STR("ACameraActor")) != type_name.npos ||
                 type_name.find(STR("EMapPropertyFlags")) != type_name.npos ||
                 type_name.find(STR("FScriptMapLayout")) != type_name.npos ||
-                type_name.find(STR("EArrayPropertyFlags")) != type_name.npos)
+                type_name.find(STR("EArrayPropertyFlags")) != type_name.npos ||
+                type_name.find(STR("ICppClassTypeInfo")) != type_name.npos ||
+                type_name.find(STR("FDefaultSetAllocator")) != type_name.npos ||
+                type_name.find(STR("TDefaultMapKeyFuncs")) != type_name.npos ||
+                type_name.find(STR("FNativeFunctionLookup")) != type_name.npos ||
+                type_name.find(STR("FGCReferenceTokenStream")) != type_name.npos ||
+                type_name.find(STR("FWindowsCriticalSection")) != type_name.npos ||
+                type_name.find(STR("TDefaultMapHashableKeyFuncs")) != type_name.npos ||
+                type_name.find(STR("FWindowsRWLock")) != type_name.npos ||
+                type_name.find(STR("FRepRecord")) != type_name.npos)
             {
                 // These types are not currently supported in RC::Unreal, so we must prevent code from being generated.
                 return;
@@ -1498,89 +1555,28 @@ namespace RC::UVTD
         //       All other types, that only differ by the prefix, must have their generated non-function-body files merged into one
         //       This should be done, confirm it before removing this comment
 
-        //std::unordered_set<File::StringType> names;
-        std::unordered_map<File::StringType, SymbolNameInfo> names;
-        names.emplace(STR("UObjectBase"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObjectBaseUtility"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObject"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UScriptStruct::ICppStructOps"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("FOutputDevice"), ReplaceUPrefixWithFPrefix::No);
-        //names.emplace(STR("UObject::Serialize"), ReplaceUPrefixWithFPrefix::No);
+        std::unordered_map<File::StringType, SymbolNameInfo> vtable_names;
+        std::unordered_map<File::StringType, SymbolNameInfo> member_vars_names;
+        for (const auto& object_item : s_object_items)
+        {
+            if (object_item.valid_for_v_table == ValidForVTable::Yes)
+            {
+                vtable_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix});
+            }
 
-        // Structs that don't have their own virtual functions
-        // They may be overriding base virtual functions but in that case they will be located at the same offset in the vtable as the base
-        // As a result, they don't need to have their offset in the vtable dumped
-        //names.emplace(STR("FBoolProperty")); // Will come up with nothing in <4.25
-        //names.emplace(STR("UBoolProperty")); // Will have something in 4.25+
-        //names.emplace(STR("FArrayProperty"));
-        //names.emplace(STR("UArrayProperty"));
-        //names.emplace(STR("FMapProperty"));
-        //names.emplace(STR("UMapProperty"));
-        //names.emplace(STR("FDelegateProperty"));
-        //names.emplace(STR("UDelegateProperty"));
-        //names.emplace(STR("FMulticastInlineDelegateProperty"));
-        //names.emplace(STR("UMulticastInlineDelegateProperty"));
-        //names.emplace(STR("FMulticastSparseDelegateProperty"));
-        //names.emplace(STR("UMulticastSparseDelegateProperty"));
-        //names.emplace(STR("FFieldPathProperty")); // 4.25+ only
-        //names.emplace(STR("FInterfaceProperty"));
-        //names.emplace(STR("UInterfaceProperty"));
-        //names.emplace(STR("FObjectProperty"));
-        //names.emplace(STR("UObjectProperty"));
-        //names.emplace(STR("FWeakObjectProperty"));
-        //names.emplace(STR("UWeakObjectProperty"));
-        //names.emplace(STR("FLazyObjectProperty"));
-        //names.emplace(STR("ULazyObjectProperty"));
-        //names.emplace(STR("FSoftObjectProperty"));
-        //names.emplace(STR("USoftObjectProperty"));
-        //names.emplace(STR("FClassProperty"));
-        //names.emplace(STR("UClassProperty"));
-        //names.emplace(STR("FSetProperty"));
-        //names.emplace(STR("USetProperty"));
-        //names.emplace(STR("FNameProperty"));
-        //names.emplace(STR("UNameProperty"));
-        //names.emplace(STR("FStrProperty"));
-        //names.emplace(STR("UStrProperty"));
-        //names.emplace(STR("FStructProperty"));
-        //names.emplace(STR("UStructProperty"));
-        //names.emplace(STR("FEnumProperty"));
-        //names.emplace(STR("UEnumProperty"));
-        //names.emplace(STR("FSoftClassProperty"));
-        //names.emplace(STR("USoftClassProperty"));
-        //names.emplace(STR("FTextProperty"));
-        //names.emplace(STR("UTextProperty"));
-
-        // Structs that have their own virtual functions and therefore need to have their offset in the vtable dumped
-        names.emplace(STR("FProperty"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
-        names.emplace(STR("UProperty"), ReplaceUPrefixWithFPrefix::Yes); // Will come up with nothing in 4.25+
-        names.emplace(STR("FField"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
-        names.emplace(STR("UField"), ReplaceUPrefixWithFPrefix::No); // Will have something in 4.25+
-        names.emplace(STR("UStruct"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("FMalloc"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("FNumericProperty"), ReplaceUPrefixWithFPrefix::No); // Will come up with nothing in <4.25
-        names.emplace(STR("UNumericProperty"), ReplaceUPrefixWithFPrefix::Yes); // Will have something in 4.25+
-        names.emplace(STR("FMulticastDelegateProperty"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UMulticastDelegateProperty"), ReplaceUPrefixWithFPrefix::Yes);
-        names.emplace(STR("FObjectPropertyBase"), ReplaceUPrefixWithFPrefix::No);
-        names.emplace(STR("UObjectPropertyBase"), ReplaceUPrefixWithFPrefix::Yes);
+            if (object_item.valid_for_member_vars == ValidForMemberVars::Yes)
+            {
+                member_vars_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix});
+            }
+        }
 
         if (vtable_or_member_vars == VTableOrMemberVars::VTable)
         {
-            dump_vtable_for_symbol(names);
+            dump_vtable_for_symbol(vtable_names);
         }
         else
         {
-            names.emplace(STR("UScriptStruct"), ReplaceUPrefixWithFPrefix::No);
-            names.emplace(STR("UWorld"), ReplaceUPrefixWithFPrefix::No);
-            names.emplace(STR("UStructProperty"), ReplaceUPrefixWithFPrefix::Yes);
-            names.emplace(STR("FStructProperty"), ReplaceUPrefixWithFPrefix::No);
-            names.emplace(STR("UArrayProperty"), ReplaceUPrefixWithFPrefix::Yes);
-            names.emplace(STR("FArrayProperty"), ReplaceUPrefixWithFPrefix::No);
-            names.emplace(STR("UMapProperty"), ReplaceUPrefixWithFPrefix::Yes);
-            names.emplace(STR("FMapProperty"), ReplaceUPrefixWithFPrefix::No);
-
-            //experimental_generate_members();
-            dump_member_variable_layouts(names);
+            dump_member_variable_layouts(member_vars_names);
         }
     }
 
