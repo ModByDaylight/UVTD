@@ -15,6 +15,7 @@ auto static get_user_selection() -> int32_t
     Output::send(STR("What would you like to do ?\n"));
     Output::send(STR("1. Generate VTable layouts\n"));
     Output::send(STR("2. Generate class/struct member variable layouts\n"));
+    Output::send(STR("3. Both\n"));
     Output::send(STR("0. Exit\n"));
 
     int32_t selection{};
@@ -66,6 +67,14 @@ auto thread_dll_start([[maybe_unused]]LPVOID thread_param) -> unsigned long
             }
             else if (selection == 2)
             {
+                Output::send(STR("Generating class/struct member variable layouts...\n"));
+                UVTD::main(UVTD::VTableOrMemberVars::MemberVars);
+            }
+            else if (selection == 3)
+            {
+                Output::send(STR("Generating VTable layouts...\n"));
+                UVTD::main(UVTD::VTableOrMemberVars::VTable);
+
                 Output::send(STR("Generating class/struct member variable layouts...\n"));
                 UVTD::main(UVTD::VTableOrMemberVars::MemberVars);
             }

@@ -23,13 +23,20 @@ namespace RC::UVTD
     enum class VTableOrMemberVars { VTable, MemberVars };
     auto main(VTableOrMemberVars) -> void;
 
+    enum class ValidForVTable { Yes, No };
+    enum class ValidForMemberVars { Yes, No };
+
     enum class ReplaceUPrefixWithFPrefix { Yes, No };
     struct SymbolNameInfo
     {
-        ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix;
+        ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix{};
+        ValidForVTable valid_for_vtable{};
+        ValidForMemberVars valid_for_member_vars{};
 
-        explicit SymbolNameInfo(ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix) :
-                replace_u_prefix_with_f_prefix(replace_u_prefix_with_f_prefix)
+        explicit SymbolNameInfo(ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, ValidForVTable valid_for_vtable, ValidForMemberVars valid_for_member_vars) :
+                replace_u_prefix_with_f_prefix(replace_u_prefix_with_f_prefix),
+                valid_for_vtable(valid_for_vtable),
+                valid_for_member_vars(valid_for_member_vars)
         {
         }
     };
@@ -59,9 +66,9 @@ namespace RC::UVTD
     public:
         auto setup_symbol_loader() -> void;
         using EnumEntriesTypeAlias = struct EnumEntry*;
-        auto dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
+        auto dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, const SymbolNameInfo&, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
         auto dump_vtable_for_symbol(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
-        auto dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
+        auto dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, const SymbolNameInfo&, EnumEntriesTypeAlias = nullptr, struct Class* class_entry = nullptr) -> void;
         auto dump_member_variable_layouts(std::unordered_map<File::StringType, SymbolNameInfo>& names) -> void;
         auto generate_code(VTableOrMemberVars) -> void;
         auto experimental_generate_members() -> void;
@@ -105,6 +112,8 @@ namespace RC::UVTD
         std::map<File::StringType, MemberVariable> variables;
         //std::map<int32_t, MemberVariable> variables;
         uint32_t last_virtual_offset;
+        ValidForVTable valid_for_vtable{ValidForVTable::No};
+        ValidForMemberVars valid_for_member_vars{ValidForMemberVars::No};
     };
     struct Classes
     {

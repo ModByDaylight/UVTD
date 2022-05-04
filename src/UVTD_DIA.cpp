@@ -26,13 +26,10 @@ namespace RC::UVTD
     std::unordered_map<File::StringType, EnumEntry> g_enum_entries{};
     std::unordered_map<File::StringType, Classes> g_class_entries{};
 
-    enum class ValidForVTable { Yes, No };
-    enum class ValidForMemberVars { Yes, No };
-
     struct ObjectItem
     {
         File::StringType name{};
-        ValidForVTable valid_for_v_table{};
+        ValidForVTable valid_for_vtable{};
         ValidForMemberVars valid_for_member_vars{};
         ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix{ReplaceUPrefixWithFPrefix::No};
     };
@@ -45,7 +42,7 @@ namespace RC::UVTD
             {STR("UStruct"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
             {STR("FMalloc"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
             {STR("FField"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UField"), ValidForVTable::Yes, ValidForMemberVars::No, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("UField"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
             {STR("FProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
             {STR("UProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
             {STR("FNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
@@ -114,6 +111,26 @@ namespace RC::UVTD
             STR("UMapProperty"),
             STR("UBoolProperty"),
             STR("UByteProperty"),
+    };
+
+    static std::unordered_map<File::StringType, std::unordered_set<File::StringType>> g_private_variables{
+            {
+                    STR("FField"),
+                    {
+                            STR("ClassPrivate"),
+                            STR("NamePrivate"),
+                            STR("Next"),
+                            STR("Owner"),
+                    }
+            },
+    };
+
+    static std::unordered_set<File::StringType> NonCasePreservingVariants{
+            {STR("4_27")},
+    };
+
+    static std::unordered_set<File::StringType> CasePreservingVariants{
+            {STR("4_27_CasePreserving")},
     };
 
     auto static event_loop_update() -> void
@@ -413,39 +430,24 @@ namespace RC::UVTD
         }
         else
         {
-            if (sym_tag == SymTagData)
-            {
-                CComPtr<IDiaSymbol> type_symbol;
-                if (auto hr = symbol->get_classParent(&type_symbol); hr != S_OK)
-                {
-                    throw std::runtime_error{std::format("Call to 'get_type()' failed with error '{}'", HRESULTToString(hr))};
-                }
-
-                DWORD type_sym_tag;
-                type_symbol->get_symTag(&type_sym_tag);
-                BSTR name_buffer;
-                if (auto hr = symbol->get_name(&name_buffer); hr == S_OK)
-                {
-                    name = name_buffer;
-                }
-            }
-
             BSTR name_buffer;
             if (auto hr = symbol->get_name(&name_buffer); hr == S_OK)
             {
                 name = name_buffer;
+                SysFreeString(name_buffer);
             }
 
             BSTR undecorated_name_buffer;
             if (auto hr = symbol->get_undecoratedName(&undecorated_name_buffer); hr == S_OK)
             {
                 name = undecorated_name_buffer;
+                SysFreeString(undecorated_name_buffer);
             }
         }
 
         if (name.empty())
         {
-            Output::send(STR("Name not found. sym_tag: {}\n"), sym_tag_to_string(sym_tag));
+            //Output::send(STR("Name not found. sym_tag: {}\n"), sym_tag_to_string(sym_tag));
             name = STR("NoName");
         }
 
@@ -665,31 +667,37 @@ namespace RC::UVTD
         }
     }
 
-    auto& get_existing_or_create_new_class_entry(std::filesystem::path& pdb_file, const File::StringType& symbol_name, const File::StringType& symbol_name_clean)
+    auto& get_existing_or_create_new_class_entry(std::filesystem::path& pdb_file, const File::StringType& symbol_name, const File::StringType& symbol_name_clean, const SymbolNameInfo& name_info)
     {
         auto pdb_file_name = pdb_file.filename().stem();
-        if (g_class_entries.contains(pdb_file_name))
-        {
-            auto& classes = g_class_entries[pdb_file_name];
-            if (classes.entries.contains(symbol_name_clean))
+        auto& class_entry = [&]() -> auto& {
+            if (g_class_entries.contains(pdb_file_name))
             {
-                return classes.entries[symbol_name_clean];
+                auto& classes = g_class_entries[pdb_file_name];
+                if (classes.entries.contains(symbol_name_clean))
+                {
+                    return classes.entries[symbol_name_clean];
+                }
+                else
+                {
+                    return classes.entries.emplace(symbol_name_clean, Class{
+                            .class_name = File::StringType{symbol_name},
+                            .class_name_clean = symbol_name_clean
+                    }).first->second;
+                }
             }
             else
             {
-                return classes.entries.emplace(symbol_name_clean, Class{
+                return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
                         .class_name = File::StringType{symbol_name},
                         .class_name_clean = symbol_name_clean
-                }).first->second;
+                };
             }
-        }
-        else
-        {
-            return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
-                    .class_name = File::StringType{symbol_name},
-                    .class_name_clean = symbol_name_clean
-            };
-        }
+        }();
+
+        class_entry.valid_for_member_vars = name_info.valid_for_member_vars;
+        class_entry.valid_for_vtable = name_info.valid_for_vtable;
+        return class_entry;
     }
 
     auto get_type_name(CComPtr<IDiaSymbol>& type) -> File::StringType
@@ -718,16 +726,18 @@ namespace RC::UVTD
         }
     }
 
-    auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entry, Class* class_entry) -> void
+    auto VTableDumper::dump_member_variable_layouts(CComPtr<IDiaSymbol>& symbol, const SymbolNameInfo& name_info, EnumEntriesTypeAlias enum_entry, Class* class_entry) -> void
     {
         auto symbol_name = get_symbol_name(symbol);
 
-        // Replace 'U' with 'F' for everything except UField & FField
-        if (replace_u_prefix_with_f_prefix == ReplaceUPrefixWithFPrefix::Yes)
+        // Replace 'U' with 'F' for a few structs
+        for (const auto& UPrefixed : UPrefixToFPrefix)
         {
-            // Don't generate anything for this variable if this is 4.25+ and it has a 'U' prefix and we've been requested to replace the prefix with an 'F' prefix.
-            if (is_425_plus && !symbol_name.empty() && symbol_name[0] == STR('U')) { return; }
-            symbol_name.replace(0, 1, STR("F"));
+            for (size_t i = symbol_name.find(UPrefixed); i != symbol_name.npos; i = symbol_name.find(UPrefixed))
+            {
+                symbol_name.replace(i, 1, STR("F"));
+                ++i;
+            }
         }
 
         File::StringType symbol_name_clean{symbol_name};
@@ -741,7 +751,7 @@ namespace RC::UVTD
         if (sym_tag == SymTagUDT)
         {
             if (valid_udt_names.find(symbol_name) == valid_udt_names.end()) { return; }
-            auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean);
+            auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean, name_info);
             auto& local_enum_entry = get_existing_or_create_new_enum_entry(symbol_name, symbol_name_clean);
 
             CComPtr<IDiaEnumSymbols> sub_symbols;
@@ -751,7 +761,9 @@ namespace RC::UVTD
                 ULONG num_symbols_fetched{};
                 while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
                 {
-                    dump_member_variable_layouts(sub_symbol, ReplaceUPrefixWithFPrefix::No, &local_enum_entry, &local_class_entry);
+                    SymbolNameInfo new_name_info = name_info;
+                    new_name_info.replace_u_prefix_with_f_prefix = ReplaceUPrefixWithFPrefix::No;
+                    dump_member_variable_layouts(sub_symbol, new_name_info, &local_enum_entry, &local_class_entry);
                 }
                 sub_symbol = nullptr;
             }
@@ -930,23 +942,26 @@ namespace RC::UVTD
                 continue;
             }
 
-            dump_member_variable_layouts(sub_symbol, name_info.replace_u_prefix_with_f_prefix);
+            dump_member_variable_layouts(sub_symbol, name_info);
             Output::send(STR("\n"));
         }
     }
 
-    auto VTableDumper::dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix, EnumEntriesTypeAlias enum_entries, Class* class_entry) -> void
+    auto VTableDumper::dump_vtable_for_symbol(CComPtr<IDiaSymbol>& symbol, const SymbolNameInfo& name_info, EnumEntriesTypeAlias enum_entries, Class* class_entry) -> void
     {
         // Symbol name => Offset in vtable
         static std::unordered_map<File::StringType, uint32_t> functions_already_dumped{};
 
         auto symbol_name = get_symbol_name(symbol);
 
-        // Replace 'U' with 'F' for everything except UField & FField
-        if (replace_u_prefix_with_f_prefix == ReplaceUPrefixWithFPrefix::Yes)
-            //if (symbol_name.starts_with('U') && symbol_name != STR("UField") && symbol_name != STR("FField"))
+        // Replace 'U' with 'F' for a few structs
+        for (const auto& UPrefixed : UPrefixToFPrefix)
         {
-            symbol_name.replace(0, 1, STR("F"));
+            for (size_t i = symbol_name.find(UPrefixed); i != symbol_name.npos; i = symbol_name.find(UPrefixed))
+            {
+                symbol_name.replace(i, 1, STR("F"));
+                ++i;
+            }
         }
 
         bool is_overload{};
@@ -963,40 +978,14 @@ namespace RC::UVTD
         DWORD sym_tag;
         symbol->get_symTag(&sym_tag);
 
-        if (sym_tag == SymTagUDT)
+        auto process_struct_or_class = [&]()
         {
             if (valid_udt_names.find(symbol_name) == valid_udt_names.end()) { return; }
             functions_already_dumped.clear();
             //Output::send(STR("Dumping vtable for symbol '{}', tag: '{}'\n"), symbol_name, sym_tag_to_string(sym_tag));
 
             auto local_enum_entries = &g_enum_entries[symbol_name_clean];
-
-            //auto& local_class_entry = [&]() -> Class& {
-            //    auto pdb_file_name = pdb_file.filename().stem();
-            //    if (g_class_entries.contains(pdb_file_name))
-            //    {
-            //        auto& classes = g_class_entries[pdb_file_name];
-            //        if (classes.entries.contains(symbol_name_clean))
-            //        {
-            //            return classes.entries[symbol_name_clean];
-            //        }
-            //        else
-            //        {
-            //            return classes.entries.emplace(symbol_name_clean, Class{
-            //                    .class_name = File::StringType{symbol_name},
-            //                    .class_name_clean = symbol_name_clean
-            //            }).first->second;
-            //        }
-            //    }
-            //    else
-            //    {
-            //        return g_class_entries[pdb_file_name].entries[symbol_name_clean] = Class{
-            //                .class_name = File::StringType{symbol_name},
-            //                .class_name_clean = symbol_name_clean
-            //        };
-            //    }
-            //}();
-            auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean);
+            auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean, name_info);
 
             HRESULT hr;
             CComPtr<IDiaEnumSymbols> sub_symbols;
@@ -1009,15 +998,22 @@ namespace RC::UVTD
                     // TODO:  The 'ReplaceUPrefixWithFPrefix' thing needs to be removed I think.
                     //        This is because we can't keep track of it with a recursive design.
                     //        We could hard-code the value to the symbol name instead.
-                    dump_vtable_for_symbol(sub_symbol, ReplaceUPrefixWithFPrefix::No, local_enum_entries, &local_class_entry);
+                    SymbolNameInfo new_name_info = name_info;
+                    new_name_info.replace_u_prefix_with_f_prefix = ReplaceUPrefixWithFPrefix::No;
+                    dump_vtable_for_symbol(sub_symbol, new_name_info, local_enum_entries, &local_class_entry);
                 }
                 sub_symbol = nullptr;
             }
             sub_symbols = nullptr;
+        };
+
+        if (sym_tag == SymTagUDT)
+        {
+            process_struct_or_class();
         }
         else if (sym_tag == SymTagBaseClass)
         {
-            return;
+            process_struct_or_class();
         }
         else if (sym_tag == SymTagFunction)
         {
@@ -1085,21 +1081,9 @@ namespace RC::UVTD
                 dia_global_symbols_enum = nullptr;
                 continue;
             }
-            dump_vtable_for_symbol(sub_symbol, name_info.replace_u_prefix_with_f_prefix);
+            dump_vtable_for_symbol(sub_symbol, name_info);
         }
     }
-
-    static std::unordered_map<File::StringType, std::unordered_set<File::StringType>> g_private_variables{
-            {
-                    STR("FField"),
-                    {
-                            STR("ClassPrivate"),
-                            STR("NamePrivate"),
-                            STR("Next"),
-                            STR("Owner"),
-                    }
-            },
-    };
 
     auto static generate_files(const std::filesystem::path& output_dir, VTableOrMemberVars vtable_or_member_vars) -> void
     {
@@ -1113,6 +1097,9 @@ namespace RC::UVTD
         static std::filesystem::path member_variable_layouts_gen_output_src_path = member_variable_layouts_gen_output_path / "generated_src";
         static std::filesystem::path member_variable_layouts_gen_function_bodies_path = member_variable_layouts_gen_output_include_path / "FunctionBodies";
         static std::filesystem::path member_variable_layouts_templates_output_path = "MemberVarLayoutTemplates";
+        static std::filesystem::path virtual_gen_output_path = "GeneratedVirtualImplementations";
+        static std::filesystem::path virtual_gen_output_include_path = virtual_gen_output_path / "generated_include";
+        static std::filesystem::path virtual_gen_function_bodies_path = virtual_gen_output_include_path / "FunctionBodies";
 
         if (!std::filesystem::exists(output_dir))
         {
@@ -1137,7 +1124,7 @@ namespace RC::UVTD
                 for (const auto& item : std::filesystem::directory_iterator(vtable_gen_output_function_bodies_path))
                 {
                     if (item.is_directory()) { continue; }
-                    if (item.path().extension() != STR(".hpp")) { continue; }
+                    if (item.path().extension() != STR(".cpp")) { continue; }
 
                     File::delete_file(item.path());
                 }
@@ -1245,6 +1232,28 @@ namespace RC::UVTD
                 }
             }
 
+            if (std::filesystem::exists(virtual_gen_output_include_path))
+            {
+                for (const auto& item : std::filesystem::directory_iterator(virtual_gen_output_include_path))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".hpp")) { continue; }
+
+                    File::delete_file(item.path());
+                }
+            }
+
+            if (std::filesystem::exists(virtual_gen_function_bodies_path))
+            {
+                for (const auto& item : std::filesystem::directory_iterator(virtual_gen_function_bodies_path))
+                {
+                    if (item.is_directory()) { continue; }
+                    if (item.path().extension() != STR(".cpp")) { continue; }
+
+                    File::delete_file(item.path());
+                }
+            }
+
             for (const auto&[pdb_name, classes] : g_class_entries)
             {
                 auto template_file = std::format(STR("MemberVariableLayout_{}_Template.ini"), pdb_name);
@@ -1256,8 +1265,76 @@ namespace RC::UVTD
                     return File::StringType{string};
                 });
 
+                auto pdb_name_no_underscore = pdb_name;
+                pdb_name_no_underscore.replace(pdb_name_no_underscore.find(STR('_')), 1, STR(""));
+
+                auto virtual_header_file = virtual_gen_output_include_path / std::format(STR("UnrealVirtual{}.hpp"), pdb_name_no_underscore);
+                Output::send(STR("Generating file '{}'\n"), virtual_header_file.wstring());
+                Output::Targets<Output::NewFileDevice> virtual_header_dumper;
+                auto& virtual_header_file_device = virtual_header_dumper.get_device<Output::NewFileDevice>();
+                virtual_header_file_device.set_file_name_and_path(virtual_header_file);
+                virtual_header_file_device.set_formatter([](File::StringViewType string) {
+                    return File::StringType{string};
+                });
+
+                auto virtual_src_file = virtual_gen_function_bodies_path / std::format(STR("UnrealVirtual{}.cpp"), pdb_name_no_underscore);
+                Output::send(STR("Generating file '{}'\n"), virtual_src_file.wstring());
+                Output::Targets<Output::NewFileDevice> virtual_src_dumper;
+                auto& virtual_src_file_device = virtual_src_dumper.get_device<Output::NewFileDevice>();
+                virtual_src_file_device.set_file_name_and_path(virtual_src_file);
+                virtual_src_file_device.set_formatter([](File::StringViewType string) {
+                    return File::StringType{string};
+                });
+
+                bool is_case_preserving_pdb = !(CasePreservingVariants.find(pdb_name) == CasePreservingVariants.end());
+                bool is_non_case_preserving_pdb = !(NonCasePreservingVariants.find(pdb_name) == NonCasePreservingVariants.end());
+
+                if (!is_case_preserving_pdb)
+                //if (pdb_name != STR("4_27_CasePreserving"))
+                {
+                    virtual_header_dumper.send(STR("#ifndef RC_UNREAL_UNREAL_VIRTUAL_{}\n#define RC_UNREAL_UNREAL_VIRTUAL{}_HPP\n\n"), pdb_name_no_underscore, pdb_name_no_underscore);
+                    virtual_header_dumper.send(STR("#include <Unreal/VersionedContainer/UnrealVirtualImpl/UnrealVirtualBaseVC.hpp>\n\n"));
+                    virtual_header_dumper.send(STR("namespace RC::Unreal\n"));
+                    virtual_header_dumper.send(STR("{\n"));
+                    virtual_header_dumper.send(STR("    class UnrealVirtual{} : public UnrealVirtualBaseVC\n"), pdb_name_no_underscore);
+                    virtual_header_dumper.send(STR("    {\n"));
+                    virtual_header_dumper.send(STR("        void set_virtual_offsets() override;\n"));
+                    virtual_header_dumper.send(STR("    }\n"));
+                    virtual_header_dumper.send(STR("}\n\n\n"));
+                    virtual_header_dumper.send(STR("#endif // RC_UNREAL_UNREAL_VIRTUAL{}_HPP\n"), pdb_name_no_underscore);
+
+                    virtual_src_dumper.send(STR("#include <Unreal/VersionedContainer/UnrealVirtualImpl/UnrealVirtual{}.hpp>\n\n"), pdb_name_no_underscore);
+                    virtual_src_dumper.send(STR("// These are all the structs that have virtuals that need to have their offset set\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/UObject.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/UScriptStruct.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/FOutputDevice.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/FField.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/FProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FNumericProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FObjectProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FMulticastDelegateProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FStructProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FArrayProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FMapProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FBoolProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/NumericPropertyTypes.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Function.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/UClass.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/World.hpp>\n"));
+                    virtual_src_dumper.send(STR("\n"));
+                    virtual_src_dumper.send(STR("namespace RC::Unreal\n"));
+                    virtual_src_dumper.send(STR("{\n"));
+                    virtual_src_dumper.send(STR("    void UnrealVirtual{}::set_virtual_offsets()\n"), pdb_name_no_underscore);
+                    virtual_src_dumper.send(STR("    {\n"));
+                }
+
                 for (const auto&[class_name, class_entry] : classes.entries)
                 {
+                    if (!class_entry.functions.empty() && class_entry.valid_for_vtable == ValidForVTable::Yes && !is_case_preserving_pdb)
+                    {
+                        virtual_src_dumper.send(STR("#include <FunctionBodies/{}_VTableOffsets_{}_FunctionBody.cpp>\n"), pdb_name, class_name);
+                    }
+
                     if (class_entry.variables.empty()) { continue; }
 
                     auto default_setter_src_file = member_variable_layouts_gen_function_bodies_path / std::format(STR("{}_MemberVariableLayout_DefaultSetter_{}.cpp"), pdb_name, class_entry.class_name_clean);
@@ -1274,6 +1351,7 @@ namespace RC::UVTD
                     for (const auto&[variable_name, variable] : class_entry.variables)
                     {
                         ini_dumper.send(STR("{} = 0x{:X}\n"), variable.name, variable.offset);
+
                         default_setter_src_dumper.send(STR("if (auto it = {}::MemberOffsets.find(STR(\"{}\")); it == {}::MemberOffsets.end())\n"), class_entry.class_name, variable.name, class_entry.class_name);
                         default_setter_src_dumper.send(STR("{\n"));
                         default_setter_src_dumper.send(STR("    {}::MemberOffsets.emplace(STR(\"{}\"), 0x{:X});\n"), class_entry.class_name, variable.name, variable.offset);
@@ -1281,6 +1359,47 @@ namespace RC::UVTD
                     }
 
                     ini_dumper.send(STR("\n"));
+                }
+
+                if (!is_case_preserving_pdb)
+                {
+                    virtual_src_dumper.send(STR("\n"));
+
+                    // Second & third passes just to separate VTable includes and MemberOffsets includes.
+                    if (is_non_case_preserving_pdb)
+                        //if (pdb_name == STR("4_27"))
+                    {
+                        virtual_src_dumper.send(STR("#ifdef WITH_CASE_PRESERVING_NAME\n"));
+                        for (const auto&[class_name, class_entry] : classes.entries)
+                        {
+                            if (class_entry.variables.empty()) { continue; }
+
+                            if (class_entry.valid_for_member_vars == ValidForMemberVars::Yes)
+                            {
+                                virtual_src_dumper.send(STR("#include <FunctionBodies/{}_CasePreserving_MemberVariableLayout_DefaultSetter_{}.cpp>\n"), pdb_name, class_name);
+                            }
+                        }
+                        virtual_src_dumper.send(STR("#else\n"));
+                    }
+
+                    for (const auto&[class_name, class_entry] : classes.entries)
+                    {
+                        if (class_entry.variables.empty()) { continue; }
+
+                        if (class_entry.valid_for_member_vars == ValidForMemberVars::Yes)
+                        {
+                            virtual_src_dumper.send(STR("#include <FunctionBodies/{}_MemberVariableLayout_DefaultSetter_{}.cpp>\n"), pdb_name, class_name);
+                        }
+                    }
+
+                    if (is_non_case_preserving_pdb)
+                        //if (pdb_name == STR("4_27"))
+                    {
+                        virtual_src_dumper.send(STR("#endif\n"));
+                    }
+
+                    virtual_src_dumper.send(STR("    }\n"));
+                    virtual_src_dumper.send(STR("}\n"));
                 }
             }
 
@@ -1559,14 +1678,14 @@ namespace RC::UVTD
         std::unordered_map<File::StringType, SymbolNameInfo> member_vars_names;
         for (const auto& object_item : s_object_items)
         {
-            if (object_item.valid_for_v_table == ValidForVTable::Yes)
+            if (object_item.valid_for_vtable == ValidForVTable::Yes)
             {
-                vtable_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix});
+                vtable_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix, object_item.valid_for_vtable, object_item.valid_for_member_vars});
             }
 
             if (object_item.valid_for_member_vars == ValidForMemberVars::Yes)
             {
-                member_vars_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix});
+                member_vars_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix, object_item.valid_for_vtable, object_item.valid_for_member_vars});
             }
         }
 
