@@ -83,8 +83,6 @@ auto thread_dll_start([[maybe_unused]]LPVOID thread_param) -> unsigned long
                 // Reserved for NOP, ask user again.
             }
         }
-
-        //UVTD::main();
     }
     catch (std::exception& e)
     {

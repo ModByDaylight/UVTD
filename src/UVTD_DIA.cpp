@@ -31,41 +31,54 @@ namespace RC::UVTD
         File::StringType name{};
         ValidForVTable valid_for_vtable{};
         ValidForMemberVars valid_for_member_vars{};
-        ReplaceUPrefixWithFPrefix replace_u_prefix_with_f_prefix{ReplaceUPrefixWithFPrefix::No};
     };
     static std::vector<ObjectItem> s_object_items{
-            {STR("UObjectBase"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UObjectBaseUtility"), ValidForVTable::Yes, ValidForMemberVars::No, ReplaceUPrefixWithFPrefix::No},
-            {STR("UObject"), ValidForVTable::Yes, ValidForMemberVars::No, ReplaceUPrefixWithFPrefix::No},
-            {STR("UScriptStruct::ICppStructOps"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("FOutputDevice"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UStruct"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("FMalloc"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("FField"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UField"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FMulticastDelegateProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UMulticastDelegateProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FObjectPropertyBase"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UObjectPropertyBase"), ValidForVTable::Yes, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("UObjectBase"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UObjectBaseUtility"), ValidForVTable::Yes, ValidForMemberVars::No},
+            {STR("UObject"), ValidForVTable::Yes, ValidForMemberVars::No},
+            {STR("UScriptStruct::ICppStructOps"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FOutputDevice"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UStruct"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FMalloc"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FField"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UField"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UNumericProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FMulticastDelegateProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UMulticastDelegateProperty"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("FObjectPropertyBase"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            {STR("UObjectPropertyBase"), ValidForVTable::Yes, ValidForMemberVars::Yes},
 
-            {STR("UScriptStruct"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UWorld"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UFunction"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UClass"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("FStructProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UStructProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FArrayProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UArrayProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FMapProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UMapProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FBoolProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UBoolProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
-            {STR("FByteProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::No},
-            {STR("UByteProperty"), ValidForVTable::No, ValidForMemberVars::Yes, ReplaceUPrefixWithFPrefix::Yes},
+            {STR("UScriptStruct"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UWorld"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UFunction"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UClass"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UEnum"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FStructProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UStructProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FArrayProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UArrayProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FMapProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UMapProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FBoolProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UBoolProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FByteProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UByteProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FEnumProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UEnumProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FClassProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UClassProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FSoftClassProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("USoftClassProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FDelegateProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UDelegateProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FInterfaceProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("UInterfaceProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FFieldPathProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("FSetProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
+            {STR("USetProperty"), ValidForVTable::No, ValidForMemberVars::Yes},
     };
 
     static std::unordered_set<File::StringType> valid_udt_names{
@@ -97,9 +110,23 @@ namespace RC::UVTD
             STR("UFunction"),
             STR("FBoolProperty"),
             STR("UClass"),
+            STR("UEnum"),
             STR("UBoolProperty"),
             STR("FByteProperty"),
             STR("UByteProperty"),
+            STR("FEnumProperty"),
+            STR("UEnumProperty"),
+            STR("FClassProperty"),
+            STR("UClassProperty"),
+            STR("FSoftClassProperty"),
+            STR("USoftClassProperty"),
+            STR("FDelegateProperty"),
+            STR("UDelegateProperty"),
+            STR("FInterfaceProperty"),
+            STR("UInterfaceProperty"),
+            STR("FFieldPathProperty"),
+            STR("FSetProperty"),
+            STR("USetProperty"),
     };
 
     static std::vector<File::StringType> UPrefixToFPrefix{
@@ -111,7 +138,106 @@ namespace RC::UVTD
             STR("UMapProperty"),
             STR("UBoolProperty"),
             STR("UByteProperty"),
+            STR("UNumericProperty"),
+            STR("UEnumProperty"),
+            STR("UClassProperty"),
+            STR("USoftClassProperty"),
+            STR("UDelegateProperty"),
+            STR("UInterfaceProperty"),
+            STR("USetProperty"),
     };
+
+    auto static is_valid_type_to_dump(File::StringType type_name) -> bool
+    {
+        if (type_name.find(STR("FUnversionedStructSchema")) != type_name.npos ||
+            type_name.find(STR("ELifetimeCondition")) != type_name.npos ||
+            type_name.find(STR("UAISystemBase")) != type_name.npos ||
+            type_name.find(STR("FLevelCollection")) != type_name.npos ||
+            type_name.find(STR("FThreadSafeCounter")) != type_name.npos ||
+            type_name.find(STR("FWorldAsyncTraceState")) != type_name.npos ||
+            type_name.find(STR("FDelegateHandle")) != type_name.npos ||
+            type_name.find(STR("AGameMode")) != type_name.npos ||
+            type_name.find(STR("UAvoidanceManager")) != type_name.npos ||
+            type_name.find(STR("FOnBeginTearingDownEvent")) != type_name.npos ||
+            type_name.find(STR("UBlueprint")) != type_name.npos ||
+            type_name.find(STR("UCanvas")) != type_name.npos ||
+            type_name.find(STR("UActorComponent")) != type_name.npos ||
+            type_name.find(STR("AController")) != type_name.npos ||
+            type_name.find(STR("ULevel")) != type_name.npos ||
+            type_name.find(STR("FPhysScene_Chaos")) != type_name.npos ||
+            type_name.find(STR("APhysicsVolume")) != type_name.npos ||
+            type_name.find(STR("UDemoNetDriver")) != type_name.npos ||
+            type_name.find(STR("FEndPhysicsTickFunction")) != type_name.npos ||
+            type_name.find(STR("FFXSystemInterface")) != type_name.npos ||
+            type_name.find(STR("ERHIFeatureLevel")) != type_name.npos ||
+            type_name.find(STR("EFlushLevelStreamingType")) != type_name.npos ||
+            type_name.find(STR("ULineBatchComponent")) != type_name.npos ||
+            type_name.find(STR("AGameState")) != type_name.npos ||
+            type_name.find(STR("FOnGameStateSetEvent")) != type_name.npos ||
+            type_name.find(STR("AAudioVolume")) != type_name.npos ||
+            type_name.find(STR("FLatentActionManager")) != type_name.npos ||
+            type_name.find(STR("FOnLevelsChangedEvent")) != type_name.npos ||
+            type_name.find(STR("AParticleEventManager")) != type_name.npos ||
+            type_name.find(STR("UNavigationSystem")) != type_name.npos ||
+            type_name.find(STR("UNetDriver")) != type_name.npos ||
+            type_name.find(STR("AGameNetworkManager")) != type_name.npos ||
+            type_name.find(STR("ETravelType")) != type_name.npos ||
+            type_name.find(STR("FDefaultDelegateUserPolicy")) != type_name.npos ||
+            type_name.find(STR("TMulticastDelegate")) != type_name.npos ||
+            type_name.find(STR("FActorsInitializedParams")) != type_name.npos ||
+            type_name.find(STR("FOnBeginPostProcessSettings")) != type_name.npos ||
+            type_name.find(STR("FIntVector")) != type_name.npos ||
+            type_name.find(STR("UGameInstance")) != type_name.npos ||
+            type_name.find(STR("FWorldPSCPool")) != type_name.npos ||
+            type_name.find(STR("UMaterialParameterCollectionInstance")) != type_name.npos ||
+            type_name.find(STR("FParticlePerfStats")) != type_name.npos ||
+            type_name.find(STR("FWorldInGamePerformanceTrackers")) != type_name.npos ||
+            type_name.find(STR("UPhysicsCollisionHandler")) != type_name.npos ||
+            type_name.find(STR("UPhysicsFieldComponent")) != type_name.npos ||
+            type_name.find(STR("FPhysScene")) != type_name.npos ||
+            type_name.find(STR("APlayerController")) != type_name.npos ||
+            type_name.find(STR("IInterface_PostProcessVolume")) != type_name.npos ||
+            type_name.find(STR("FOnTickFlushEvent")) != type_name.npos ||
+            type_name.find(STR("FSceneInterface")) != type_name.npos ||
+            type_name.find(STR("FStartAsyncSimulationFunction")) != type_name.npos ||
+            type_name.find(STR("FStartPhysicsTickFunction")) != type_name.npos ||
+            type_name.find(STR("FOnNetTickEvent")) != type_name.npos ||
+            type_name.find(STR("ETickingGroup")) != type_name.npos ||
+            type_name.find(STR("FTickTaskLevel")) != type_name.npos ||
+            type_name.find(STR("FTimerManager")) != type_name.npos ||
+            type_name.find(STR("FURL")) != type_name.npos ||
+            type_name.find(STR("UWorldComposition")) != type_name.npos ||
+            type_name.find(STR("EWorldType")) != type_name.npos ||
+            type_name.find(STR("FSubsystemCollection")) != type_name.npos ||
+            type_name.find(STR("UWorldSubsystem")) != type_name.npos ||
+            type_name.find(STR("FStreamingLevelsToConsider")) != type_name.npos ||
+            type_name.find(STR("APawn")) != type_name.npos ||
+            type_name.find(STR("ACameraActor")) != type_name.npos ||
+            type_name.find(STR("EMapPropertyFlags")) != type_name.npos ||
+            type_name.find(STR("FScriptMapLayout")) != type_name.npos ||
+            type_name.find(STR("EArrayPropertyFlags")) != type_name.npos ||
+            type_name.find(STR("ICppClassTypeInfo")) != type_name.npos ||
+            type_name.find(STR("FDefaultSetAllocator")) != type_name.npos ||
+            type_name.find(STR("TDefaultMapKeyFuncs")) != type_name.npos ||
+            type_name.find(STR("FNativeFunctionLookup")) != type_name.npos ||
+            type_name.find(STR("FGCReferenceTokenStream")) != type_name.npos ||
+            type_name.find(STR("FWindowsCriticalSection")) != type_name.npos ||
+            type_name.find(STR("TDefaultMapHashableKeyFuncs")) != type_name.npos ||
+            type_name.find(STR("FWindowsRWLock")) != type_name.npos ||
+            type_name.find(STR("FRepRecord")) != type_name.npos ||
+            type_name.find(STR("EClassCastFlags")) != type_name.npos ||
+            type_name.find(STR("FAudioDeviceHandle")) != type_name.npos ||
+            type_name.find(STR("TVector")) != type_name.npos ||
+            type_name.find(STR("FScriptSetLayout")) != type_name.npos)
+        {
+            // These types are not currently supported in RC::Unreal, so we must prevent code from being generated.
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+    }
 
     static std::unordered_map<File::StringType, std::unordered_set<File::StringType>> g_private_variables{
             {
@@ -501,7 +627,6 @@ namespace RC::UVTD
         }
         else
         {
-            // Default
             real_symbol = symbol;
         }
 
@@ -610,10 +735,8 @@ namespace RC::UVTD
         CComPtr<IDiaEnumSymbols> sub_symbols;
         if (hr = symbol->findChildren(SymTagNull, nullptr, NULL, &sub_symbols); hr == S_OK)
         {
-            //params.append(STR("Has children, "));
             CComPtr<IDiaSymbol> sub_symbol;
             ULONG num_symbols_fetched{};
-            //hr = sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched);
             LONG count;
             hr = sub_symbols->get_Count(&count);
             while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
@@ -730,14 +853,24 @@ namespace RC::UVTD
     {
         auto symbol_name = get_symbol_name(symbol);
 
-        // Replace 'U' with 'F' for a few structs
+        bool could_not_replace_prefix{};
         for (const auto& UPrefixed : UPrefixToFPrefix)
         {
             for (size_t i = symbol_name.find(UPrefixed); i != symbol_name.npos; i = symbol_name.find(UPrefixed))
             {
+                if (is_425_plus)
+                {
+                    could_not_replace_prefix = true;
+                    break;
+                }
                 symbol_name.replace(i, 1, STR("F"));
                 ++i;
             }
+        }
+
+        if (could_not_replace_prefix)
+        {
+            return;
         }
 
         File::StringType symbol_name_clean{symbol_name};
@@ -747,12 +880,19 @@ namespace RC::UVTD
         DWORD sym_tag;
         symbol->get_symTag(&sym_tag);
 
+        if (symbol_name == STR("Names"))
+        {
+            Output::send(STR("tag for Names: {}\n"), sym_tag_to_string(sym_tag));
+        }
+
         HRESULT hr;
         if (sym_tag == SymTagUDT)
         {
             if (valid_udt_names.find(symbol_name) == valid_udt_names.end()) { return; }
             auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean, name_info);
             auto& local_enum_entry = get_existing_or_create_new_enum_entry(symbol_name, symbol_name_clean);
+
+            Output::send(STR("UDT symbol name: {}, enum_entry name: {}, enum_entry name clean: {}\n"), symbol_name, local_enum_entry.name, local_enum_entry.name_clean);
 
             CComPtr<IDiaEnumSymbols> sub_symbols;
             if (hr = symbol->findChildren(SymTagNull, nullptr, NULL, &sub_symbols); hr == S_OK)
@@ -762,7 +902,6 @@ namespace RC::UVTD
                 while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
                 {
                     SymbolNameInfo new_name_info = name_info;
-                    new_name_info.replace_u_prefix_with_f_prefix = ReplaceUPrefixWithFPrefix::No;
                     dump_member_variable_layouts(sub_symbol, new_name_info, &local_enum_entry, &local_class_entry);
                 }
                 sub_symbol = nullptr;
@@ -776,129 +915,49 @@ namespace RC::UVTD
 
             DWORD kind;
             symbol->get_dataKind(&kind);
-
-            if (kind != DataKind::DataIsMember)
-            {
-                return;
-            }
+            if (kind != DataKind::DataIsMember) { return; }
 
             CComPtr<IDiaSymbol> type;
-            if (hr = symbol->get_type(&type); hr != S_OK)
-            {
-                throw std::runtime_error{"Could not get type\n"};
-            }
+            if (hr = symbol->get_type(&type); hr != S_OK) { throw std::runtime_error{"Could not get type\n"}; }
 
             DWORD type_tag;
             type->get_symTag(&type_tag);
 
             auto type_name = get_type_name(type);
-
-            if (type_name.find(STR("TTuple")) != type_name.npos ||
-                type_name.find(STR("FUnversionedStructSchema")) != type_name.npos ||
-                type_name.find(STR("ELifetimeCondition")) != type_name.npos ||
-                type_name.find(STR("UAISystemBase")) != type_name.npos ||
-                type_name.find(STR("FLevelCollection")) != type_name.npos ||
-                type_name.find(STR("FThreadSafeCounter")) != type_name.npos ||
-                type_name.find(STR("FWorldAsyncTraceState")) != type_name.npos ||
-                type_name.find(STR("FDelegateHandle")) != type_name.npos ||
-                type_name.find(STR("AGameMode")) != type_name.npos ||
-                type_name.find(STR("UAvoidanceManager")) != type_name.npos ||
-                type_name.find(STR("FOnBeginTearingDownEvent")) != type_name.npos ||
-                type_name.find(STR("UBlueprint")) != type_name.npos ||
-                type_name.find(STR("UCanvas")) != type_name.npos ||
-                type_name.find(STR("UActorComponent")) != type_name.npos ||
-                type_name.find(STR("AController")) != type_name.npos ||
-                type_name.find(STR("ULevel")) != type_name.npos ||
-                type_name.find(STR("FPhysScene_Chaos")) != type_name.npos ||
-                type_name.find(STR("APhysicsVolume")) != type_name.npos ||
-                type_name.find(STR("UDemoNetDriver")) != type_name.npos ||
-                type_name.find(STR("FEndPhysicsTickFunction")) != type_name.npos ||
-                type_name.find(STR("FFXSystemInterface")) != type_name.npos ||
-                type_name.find(STR("ERHIFeatureLevel")) != type_name.npos ||
-                type_name.find(STR("EFlushLevelStreamingType")) != type_name.npos ||
-                type_name.find(STR("ULineBatchComponent")) != type_name.npos ||
-                type_name.find(STR("AGameState")) != type_name.npos ||
-                type_name.find(STR("FOnGameStateSetEvent")) != type_name.npos ||
-                type_name.find(STR("AAudioVolume")) != type_name.npos ||
-                type_name.find(STR("FLatentActionManager")) != type_name.npos ||
-                type_name.find(STR("FOnLevelsChangedEvent")) != type_name.npos ||
-                type_name.find(STR("AParticleEventManager")) != type_name.npos ||
-                type_name.find(STR("UNavigationSystem")) != type_name.npos ||
-                type_name.find(STR("UNetDriver")) != type_name.npos ||
-                type_name.find(STR("AGameNetworkManager")) != type_name.npos ||
-                type_name.find(STR("ETravelType")) != type_name.npos ||
-                type_name.find(STR("FDefaultDelegateUserPolicy")) != type_name.npos ||
-                type_name.find(STR("TMulticastDelegate")) != type_name.npos ||
-                type_name.find(STR("FActorsInitializedParams")) != type_name.npos ||
-                type_name.find(STR("FOnBeginPostProcessSettings")) != type_name.npos ||
-                type_name.find(STR("FIntVector")) != type_name.npos ||
-                type_name.find(STR("UGameInstance")) != type_name.npos ||
-                type_name.find(STR("FWorldPSCPool")) != type_name.npos ||
-                type_name.find(STR("UMaterialParameterCollectionInstance")) != type_name.npos ||
-                type_name.find(STR("FParticlePerfStats")) != type_name.npos ||
-                type_name.find(STR("FWorldInGamePerformanceTrackers")) != type_name.npos ||
-                type_name.find(STR("UPhysicsCollisionHandler")) != type_name.npos ||
-                type_name.find(STR("UPhysicsFieldComponent")) != type_name.npos ||
-                type_name.find(STR("FPhysScene")) != type_name.npos ||
-                type_name.find(STR("APlayerController")) != type_name.npos ||
-                type_name.find(STR("IInterface_PostProcessVolume")) != type_name.npos ||
-                type_name.find(STR("FOnTickFlushEvent")) != type_name.npos ||
-                type_name.find(STR("FSceneInterface")) != type_name.npos ||
-                type_name.find(STR("FStartAsyncSimulationFunction")) != type_name.npos ||
-                type_name.find(STR("FStartPhysicsTickFunction")) != type_name.npos ||
-                type_name.find(STR("FOnNetTickEvent")) != type_name.npos ||
-                type_name.find(STR("ETickingGroup")) != type_name.npos ||
-                type_name.find(STR("FTickTaskLevel")) != type_name.npos ||
-                type_name.find(STR("FTimerManager")) != type_name.npos ||
-                type_name.find(STR("FURL")) != type_name.npos ||
-                type_name.find(STR("UWorldComposition")) != type_name.npos ||
-                type_name.find(STR("EWorldType")) != type_name.npos ||
-                type_name.find(STR("FSubsystemCollection")) != type_name.npos ||
-                type_name.find(STR("UWorldSubsystem")) != type_name.npos ||
-                type_name.find(STR("FStreamingLevelsToConsider")) != type_name.npos ||
-                type_name.find(STR("APawn")) != type_name.npos ||
-                type_name.find(STR("ACameraActor")) != type_name.npos ||
-                type_name.find(STR("EMapPropertyFlags")) != type_name.npos ||
-                type_name.find(STR("FScriptMapLayout")) != type_name.npos ||
-                type_name.find(STR("EArrayPropertyFlags")) != type_name.npos ||
-                type_name.find(STR("ICppClassTypeInfo")) != type_name.npos ||
-                type_name.find(STR("FDefaultSetAllocator")) != type_name.npos ||
-                type_name.find(STR("TDefaultMapKeyFuncs")) != type_name.npos ||
-                type_name.find(STR("FNativeFunctionLookup")) != type_name.npos ||
-                type_name.find(STR("FGCReferenceTokenStream")) != type_name.npos ||
-                type_name.find(STR("FWindowsCriticalSection")) != type_name.npos ||
-                type_name.find(STR("TDefaultMapHashableKeyFuncs")) != type_name.npos ||
-                type_name.find(STR("FWindowsRWLock")) != type_name.npos ||
-                type_name.find(STR("FRepRecord")) != type_name.npos)
-            {
-                // These types are not currently supported in RC::Unreal, so we must prevent code from being generated.
-                return;
-            }
+            if (!is_valid_type_to_dump(type_name)) { return; }
 
             for (const auto& UPrefixed : UPrefixToFPrefix)
             {
                 for (size_t i = type_name.find(UPrefixed); i != type_name.npos; i = type_name.find(UPrefixed))
                 {
+                    if (is_425_plus)
+                    {
+                        could_not_replace_prefix = true;
+                        break;
+                    }
                     type_name.replace(i, 1, STR("F"));
                     ++i;
                 }
             }
 
+            if (could_not_replace_prefix)
+            {
+                return;
+            }
+
             LONG offset;
             symbol->get_offset(&offset);
 
-            enum_entry->variables.emplace(symbol_name, MemberVariable{
-                .type = type_name,
-                .name = symbol_name,
-                .offset = offset
-            });
+            auto& enum_entry_variable = enum_entry->variables[symbol_name];
+            enum_entry_variable.type = type_name;
+            enum_entry_variable.name = symbol_name;
+            enum_entry_variable.offset = offset;
 
             Output::send(STR("{} {} ({}, {}); 0x{:X}\n"), type_name, symbol_name, sym_tag_to_string(type_tag), kind_to_string(kind), offset);
-            class_entry->variables.emplace(symbol_name, MemberVariable{
-                .type = type_name,
-                .name = symbol_name,
-                .offset = offset
-            });
+            auto& class_entry_variable = class_entry->variables[symbol_name];
+            class_entry_variable.type = type_name;
+            class_entry_variable.name = symbol_name;
+            class_entry_variable.offset = offset;
         }
     }
 
@@ -943,7 +1002,6 @@ namespace RC::UVTD
             }
 
             dump_member_variable_layouts(sub_symbol, name_info);
-            Output::send(STR("\n"));
         }
     }
 
@@ -954,14 +1012,24 @@ namespace RC::UVTD
 
         auto symbol_name = get_symbol_name(symbol);
 
-        // Replace 'U' with 'F' for a few structs
+        bool could_not_replace_prefix{};
         for (const auto& UPrefixed : UPrefixToFPrefix)
         {
             for (size_t i = symbol_name.find(UPrefixed); i != symbol_name.npos; i = symbol_name.find(UPrefixed))
             {
+                if (is_425_plus)
+                {
+                    could_not_replace_prefix = true;
+                    break;
+                }
                 symbol_name.replace(i, 1, STR("F"));
                 ++i;
             }
+        }
+
+        if (could_not_replace_prefix)
+        {
+            return;
         }
 
         bool is_overload{};
@@ -984,7 +1052,7 @@ namespace RC::UVTD
             functions_already_dumped.clear();
             //Output::send(STR("Dumping vtable for symbol '{}', tag: '{}'\n"), symbol_name, sym_tag_to_string(sym_tag));
 
-            auto local_enum_entries = &g_enum_entries[symbol_name_clean];
+            auto& local_enum_entries = get_existing_or_create_new_enum_entry(symbol_name, symbol_name_clean);
             auto& local_class_entry = get_existing_or_create_new_class_entry(pdb_file, symbol_name, symbol_name_clean, name_info);
 
             HRESULT hr;
@@ -995,12 +1063,8 @@ namespace RC::UVTD
                 ULONG num_symbols_fetched{};
                 while (sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched) == S_OK && num_symbols_fetched == 1)
                 {
-                    // TODO:  The 'ReplaceUPrefixWithFPrefix' thing needs to be removed I think.
-                    //        This is because we can't keep track of it with a recursive design.
-                    //        We could hard-code the value to the symbol name instead.
                     SymbolNameInfo new_name_info = name_info;
-                    new_name_info.replace_u_prefix_with_f_prefix = ReplaceUPrefixWithFPrefix::No;
-                    dump_vtable_for_symbol(sub_symbol, new_name_info, local_enum_entries, &local_class_entry);
+                    dump_vtable_for_symbol(sub_symbol, new_name_info, &local_enum_entries, &local_class_entry);
                 }
                 sub_symbol = nullptr;
             }
@@ -1085,7 +1149,7 @@ namespace RC::UVTD
         }
     }
 
-    auto static generate_files(const std::filesystem::path& output_dir, VTableOrMemberVars vtable_or_member_vars) -> void
+    auto static generate_files(VTableOrMemberVars vtable_or_member_vars) -> void
     {
         static std::filesystem::path vtable_gen_output_path = "GeneratedVTables";
         static std::filesystem::path vtable_gen_output_include_path = vtable_gen_output_path / "generated_include";
@@ -1100,11 +1164,6 @@ namespace RC::UVTD
         static std::filesystem::path virtual_gen_output_path = "GeneratedVirtualImplementations";
         static std::filesystem::path virtual_gen_output_include_path = virtual_gen_output_path / "generated_include";
         static std::filesystem::path virtual_gen_function_bodies_path = virtual_gen_output_include_path / "FunctionBodies";
-
-        if (!std::filesystem::exists(output_dir))
-        {
-            std::filesystem::create_directory(output_dir);
-        }
 
         if (vtable_or_member_vars == VTableOrMemberVars::VTable)
         {
@@ -1254,6 +1313,15 @@ namespace RC::UVTD
                 }
             }
 
+            auto default_template_file = std::filesystem::path{STR("MemberVariableLayout.ini")};
+            Output::send(STR("Generating file '{}'\n"), default_template_file.wstring());
+            Output::Targets<Output::NewFileDevice> default_ini_dumper;
+            auto& default_ini_file_device = default_ini_dumper.get_device<Output::NewFileDevice>();
+            default_ini_file_device.set_file_name_and_path(member_variable_layouts_templates_output_path / default_template_file);
+            default_ini_file_device.set_formatter([](File::StringViewType string) {
+                return File::StringType{string};
+            });
+
             for (const auto&[pdb_name, classes] : g_class_entries)
             {
                 auto template_file = std::format(STR("MemberVariableLayout_{}_Template.ini"), pdb_name);
@@ -1290,7 +1358,6 @@ namespace RC::UVTD
                 bool is_non_case_preserving_pdb = !(NonCasePreservingVariants.find(pdb_name) == NonCasePreservingVariants.end());
 
                 if (!is_case_preserving_pdb)
-                //if (pdb_name != STR("4_27_CasePreserving"))
                 {
                     virtual_header_dumper.send(STR("#ifndef RC_UNREAL_UNREAL_VIRTUAL_{}\n#define RC_UNREAL_UNREAL_VIRTUAL{}_HPP\n\n"), pdb_name_no_underscore, pdb_name_no_underscore);
                     virtual_header_dumper.send(STR("#include <Unreal/VersionedContainer/UnrealVirtualImpl/UnrealVirtualBaseVC.hpp>\n\n"));
@@ -1318,9 +1385,16 @@ namespace RC::UVTD
                     virtual_src_dumper.send(STR("#include <Unreal/Property/FMapProperty.hpp>\n"));
                     virtual_src_dumper.send(STR("#include <Unreal/Property/FBoolProperty.hpp>\n"));
                     virtual_src_dumper.send(STR("#include <Unreal/Property/NumericPropertyTypes.hpp>\n"));
-                    virtual_src_dumper.send(STR("#include <Unreal/Function.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FSetProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FInterfaceProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FClassProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FSoftClassProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FEnumProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/Property/FFieldPathProperty.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/UFunction.hpp>\n"));
                     virtual_src_dumper.send(STR("#include <Unreal/UClass.hpp>\n"));
                     virtual_src_dumper.send(STR("#include <Unreal/World.hpp>\n"));
+                    virtual_src_dumper.send(STR("#include <Unreal/UEnum.hpp>\n"));
                     virtual_src_dumper.send(STR("\n"));
                     virtual_src_dumper.send(STR("namespace RC::Unreal\n"));
                     virtual_src_dumper.send(STR("{\n"));
@@ -1347,18 +1421,28 @@ namespace RC::UVTD
                     });
 
                     ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
+                    default_ini_dumper.send(STR("[{}]\n"), class_entry.class_name);
 
                     for (const auto&[variable_name, variable] : class_entry.variables)
                     {
                         ini_dumper.send(STR("{} = 0x{:X}\n"), variable.name, variable.offset);
+                        default_ini_dumper.send(STR("{} = -1\n"), variable.name);
 
-                        default_setter_src_dumper.send(STR("if (auto it = {}::MemberOffsets.find(STR(\"{}\")); it == {}::MemberOffsets.end())\n"), class_entry.class_name, variable.name, class_entry.class_name);
+                        File::StringType final_variable_name = variable.name;
+
+                        if (variable.name == STR("EnumFlags"))
+                        {
+                            final_variable_name = STR("EnumFlags_Internal");
+                        }
+
+                        default_setter_src_dumper.send(STR("if (auto it = {}::MemberOffsets.find(STR(\"{}\")); it == {}::MemberOffsets.end())\n"), class_entry.class_name, final_variable_name, class_entry.class_name);
                         default_setter_src_dumper.send(STR("{\n"));
-                        default_setter_src_dumper.send(STR("    {}::MemberOffsets.emplace(STR(\"{}\"), 0x{:X});\n"), class_entry.class_name, variable.name, variable.offset);
+                        default_setter_src_dumper.send(STR("    {}::MemberOffsets.emplace(STR(\"{}\"), 0x{:X});\n"), class_entry.class_name, final_variable_name, variable.offset);
                         default_setter_src_dumper.send(STR("}\n\n"));
                     }
 
                     ini_dumper.send(STR("\n"));
+                    default_ini_dumper.send(STR("\n"));
                 }
 
                 if (!is_case_preserving_pdb)
@@ -1367,7 +1451,6 @@ namespace RC::UVTD
 
                     // Second & third passes just to separate VTable includes and MemberOffsets includes.
                     if (is_non_case_preserving_pdb)
-                        //if (pdb_name == STR("4_27"))
                     {
                         virtual_src_dumper.send(STR("#ifdef WITH_CASE_PRESERVING_NAME\n"));
                         for (const auto&[class_name, class_entry] : classes.entries)
@@ -1393,7 +1476,6 @@ namespace RC::UVTD
                     }
 
                     if (is_non_case_preserving_pdb)
-                        //if (pdb_name == STR("4_27"))
                     {
                         virtual_src_dumper.send(STR("#endif\n"));
                     }
@@ -1402,6 +1484,15 @@ namespace RC::UVTD
                     virtual_src_dumper.send(STR("}\n"));
                 }
             }
+
+            auto macro_setter_file = std::filesystem::path{STR("MacroSetter.hpp")};
+            Output::send(STR("Generating file '{}'\n"), macro_setter_file.wstring());
+            Output::Targets<Output::NewFileDevice> macro_setter_dumper;
+            auto& macro_setter_file_device = macro_setter_dumper.get_device<Output::NewFileDevice>();
+            macro_setter_file_device.set_file_name_and_path(macro_setter_file);
+            macro_setter_file_device.set_formatter([](File::StringViewType string) {
+                return File::StringType{string};
+            });
 
             for (const auto&[class_name, enum_entry] : g_enum_entries)
             {
@@ -1434,6 +1525,15 @@ namespace RC::UVTD
                 {
                     bool is_private{private_variables_for_class != g_private_variables.end() && private_variables_for_class->second.find(variable.name) != private_variables_for_class->second.end()};
 
+                    File::StringType final_variable_name = variable.name;
+                    File::StringType final_type_name = variable.type;
+
+                    if (variable.name == STR("EnumFlags"))
+                    {
+                        final_variable_name = STR("EnumFlags_Internal");
+                        is_private = true;
+                    }
+
                     if (is_private)
                     {
                         header_wrapper_dumper.send(STR("private:\n"));
@@ -1443,236 +1543,31 @@ namespace RC::UVTD
                         header_wrapper_dumper.send(STR("public:\n"));
                     }
 
-                    header_wrapper_dumper.send(STR("    {} Get{}();\n"), variable.type, variable.name);
-                    header_wrapper_dumper.send(STR("    const {} Get{}() const;\n\n"), variable.type, variable.name);
-                    wrapper_src_dumper.send(STR("{} {}::Get{}()\n"), variable.type, enum_entry.name, variable.name);
+                    header_wrapper_dumper.send(STR("    {}& Get{}();\n"), variable.type, final_variable_name);
+                    header_wrapper_dumper.send(STR("    const {}& Get{}() const;\n\n"), variable.type, final_variable_name);
+                    wrapper_src_dumper.send(STR("{}& {}::Get{}()\n"), variable.type, enum_entry.name, final_variable_name);
                     wrapper_src_dumper.send(STR("{\n"));
-                    wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), variable.name);
-                    wrapper_src_dumper.send(STR("    if (offset == MemberOffsets.end()) {{ throw std::runtime_error{{\"Tried getting member variable '{}::{}' that doesn't exist in this engine version.\"}}; }}\n"), enum_entry.name, variable.name);
-                    wrapper_src_dumper.send(STR("    return Helper::Casting::ptr_cast_deref<{}>(this, offset->second);\n"), variable.type);
+                    wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), final_variable_name);
+                    wrapper_src_dumper.send(STR("    if (offset == MemberOffsets.end()) {{ throw std::runtime_error{{\"Tried getting member variable '{}::{}' that doesn't exist in this engine version.\"}}; }}\n"), enum_entry.name, final_variable_name);
+                    wrapper_src_dumper.send(STR("    return *Helper::Casting::ptr_cast<{}*>(this, offset->second);\n"), variable.type);
                     wrapper_src_dumper.send(STR("}\n"));
-                    wrapper_src_dumper.send(STR("const {} {}::Get{}() const\n"), variable.type, enum_entry.name, variable.name);
+                    wrapper_src_dumper.send(STR("const {}& {}::Get{}() const\n"), variable.type, enum_entry.name, final_variable_name);
                     wrapper_src_dumper.send(STR("{\n"));
-                    wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), variable.name);
-                    wrapper_src_dumper.send(STR("    if (offset == MemberOffsets.end()) {{ throw std::runtime_error{{\"Tried getting member variable '{}::{}' that doesn't exist in this engine version.\"}}; }}\n"), enum_entry.name, variable.name);
-                    wrapper_src_dumper.send(STR("    return Helper::Casting::ptr_cast_deref<const {}>(this, offset->second);\n"), variable.type);
+                    wrapper_src_dumper.send(STR("    static auto offset = MemberOffsets.find(STR(\"{}\"));\n"), final_variable_name);
+                    wrapper_src_dumper.send(STR("    if (offset == MemberOffsets.end()) {{ throw std::runtime_error{{\"Tried getting member variable '{}::{}' that doesn't exist in this engine version.\"}}; }}\n"), enum_entry.name, final_variable_name);
+                    wrapper_src_dumper.send(STR("    return *Helper::Casting::ptr_cast<const {}*>(this, offset->second);\n"), variable.type);
                     wrapper_src_dumper.send(STR("}\n\n"));
+
+                    macro_setter_dumper.send(STR("if (auto val = parser.get_int64(STR(\"{}\"), STR(\"{}\"), -1); val != -1)\n"), enum_entry.name, final_variable_name);
+                    macro_setter_dumper.send(STR("    Unreal::{}::MemberOffsets.emplace(STR(\"{}\"), static_cast<int32_t>(val));\n"), enum_entry.name, final_variable_name);
                 }
             }
         }
-    }
-
-    auto VTableDumper::experimental_generate_members() -> void
-    {
-        setup_symbol_loader();
-
-        HRESULT hr{};
-
-        if (hr = dia_session->findChildrenEx(nullptr, SymTagNull, nullptr, nsNone, &dia_global_symbols_enum); hr != S_OK)
-            //if (hr = dia_global_symbol->findChildren(SymTagNull, symbol_name_to_look_for.data(), NULL, &dia_global_symbols_enum); hr != S_OK)
-            //if (hr = dia_global_symbol->findChildren(SymTagNull, nullptr, NULL, &dia_global_symbols_enum); hr != S_OK)
-        {
-            throw std::runtime_error{std::format("Call to 'findChildren' failed with error '{}'", HRESULTToString(hr))};
-        }
-
-        CComPtr<IDiaSymbol> symbol;
-        ULONG celt_fetched;
-        hr = dia_global_symbols_enum->Next(1, &symbol, &celt_fetched);
-        if (hr != S_OK)
-        {
-            throw std::runtime_error{std::format("Ran into an error with a symbol while calling 'Next', error: {}\n", HRESULTToString(hr))};
-        }
-
-        Output::send(STR("Symbol: {}\n"), get_symbol_name(symbol));
-
-        CComPtr<IDiaEnumSymbols> sub_symbols;
-        hr = symbol->findChildrenEx(SymTagNull, nullptr, NULL, &sub_symbols);
-        if (hr != S_OK)
-        {
-            throw std::runtime_error{std::format("Ran into a problem while calling 'findChildren', error: {}\n", HRESULTToString(hr))};
-        }
-
-        CComPtr<IDiaSymbol> sub_symbol;
-        ULONG num_symbols_fetched;
-        hr = sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched);
-
-        for (; hr == S_OK; hr = sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched))
-        {
-            //BSTR symbol_name_buffer;
-            //if (hr = sub_symbol->get_name(&symbol_name_buffer); hr != S_OK)
-            //{
-            //    SysFreeString(symbol_name_buffer);
-            //    sub_symbol = nullptr;
-            //    continue;
-            //}
-            //File::StringType symbol_name{symbol_name_buffer};
-            //if (symbol_name != STR("FCoreDelegates")) { continue; }
-            //if (symbol_name != STR("UObjectBase"))
-            //{
-            //    sub_symbol = nullptr;
-            //    continue;
-            //}
-
-            //if (symbol_name.find(STR("UObjectBase")) == symbol_name.npos)
-            //if (symbol_name.find(STR("DeferredRegister")) == symbol_name.npos)
-            //{
-            //    sub_symbol = nullptr;
-            //    continue;
-            //}
-
-            //BSTR symbol_undecorated_name_buffer;
-            //if (hr = sub_symbol->get_undecoratedName(&symbol_undecorated_name_buffer); hr == S_OK)
-            //{
-            //    Output::send(STR("has undecorated name\n"));
-            //    symbol_name = symbol_undecorated_name_buffer;
-            //}
-            //else
-            //{
-            //    Output::send(STR("doesn't have undecorated name\n"));
-            //}
-//
-            //Output::send(STR("Found symbol: '{}'\n"), !symbol_name.empty() ? symbol_name : STR("NoName"));
-
-            CComPtr<IDiaEnumSymbols> sub_sub_symbols;
-            if (hr = sub_symbol->findChildrenEx(SymTagVTable, nullptr, NULL, &sub_sub_symbols); hr != S_OK)
-            {
-                sub_symbol = nullptr;
-                sub_sub_symbols = nullptr;
-                continue;
-            }
-
-            CComPtr<IDiaSymbol> sub_sub_symbol;
-            hr = sub_sub_symbols->Next(1, &sub_sub_symbol, &num_symbols_fetched);
-
-            for (; hr == S_OK; hr = sub_sub_symbols->Next(1, &sub_sub_symbol, &num_symbols_fetched))
-            {
-                DWORD sub_sub_sym_tag;
-                sub_sub_symbol->get_symTag(&sub_sub_sym_tag);
-
-                if (sub_sub_sym_tag == SymTagFunction)
-                {
-                    sub_sub_symbol = nullptr;
-                    continue;
-                }
-
-                BSTR sub_sub_symbol_name_buffer;
-                if (hr = sub_sub_symbol->get_name(&sub_sub_symbol_name_buffer); hr != S_OK)
-                {
-                    //SysFreeString(sub_sub_symbol_name_buffer);
-                    sub_sub_symbol = nullptr;
-                    continue;
-                }
-                File::StringViewType sub_sub_symbol_name{sub_sub_symbol_name_buffer};
-
-                BSTR sub_sub_symbol_undecorated_name_buffer;
-                if (hr = sub_sub_symbol->get_undecoratedName(&sub_sub_symbol_undecorated_name_buffer); hr == S_OK)
-                {
-                    Output::send(STR("    Has undecorated name\n"));
-                    Output::send(STR("    Decorated: {}\n"), sub_sub_symbol_name);
-                    Output::send(STR("    Undecorated: {}\n"), File::StringViewType{sub_sub_symbol_undecorated_name_buffer});
-                    sub_sub_symbol_name = sub_sub_symbol_undecorated_name_buffer;
-                }
-
-                LONG offset;
-                if (hr = sub_sub_symbol->get_offset(&offset); hr != S_OK)
-                {
-                    //Output::send(STR("Could not get offset: {}\n"), to_wstring(HRESULTToString(hr)));
-                    offset = std::numeric_limits<LONG>::max();
-                }
-
-                Output::send(STR("    Found sub symbol: '{}', offset: '0x{:X}', tag: '{}'\n"), !sub_sub_symbol_name.empty() ? sub_sub_symbol_name : STR("NoName"), offset, sym_tag_to_string(sub_sub_sym_tag));
-
-                CComPtr<IDiaSymbol> type;
-                if (hr = sub_sub_symbol->get_type(&type); hr == S_OK)
-                {
-                    Output::send(STR("    HAS TYPE\n"));
-
-                    DWORD type_sym_tag;
-                    type->get_symTag(&type_sym_tag);
-                    Output::send(STR("    Tag: {}\n"), sym_tag_to_string(type_sym_tag));
-
-                    if (type_sym_tag == SymTagPointerType)
-                    {
-                        CComPtr<IDiaSymbol> pointer_type;
-                        if (hr = type->get_type(&pointer_type); hr == S_OK)
-                        {
-                            BSTR type_name_buffer;
-                            if (hr = pointer_type->get_name(&type_name_buffer); hr == S_OK)
-                            {
-                                File::StringViewType type_name{type_name_buffer};
-                                Output::send(STR("    pointer type name: {}\n"), type_name);
-                            }
-
-                            BSTR type_undecorated_name_buffer;
-                            if (hr = pointer_type->get_undecoratedName(&type_undecorated_name_buffer); hr == S_OK)
-                            {
-                                File::StringViewType type_undecorated_name{type_name_buffer};
-                                type_undecorated_name = type_undecorated_name_buffer;
-                                Output::send(STR("    undecorated pointer type name: {}\n"), type_undecorated_name);
-                            }
-                        }
-                    }
-                    else if (type_sym_tag == SymTagBaseType)
-                    {
-                        // Enumerate get_baseType
-                    }
-
-                    // TODO: Look into anything that uses the subscript operator, idk if the [x] will be included in the value symbol name.
-                    // TODO: Add * or & depending on if the type symbol is a pointer or a reference because that's not included in the symbol name.
-                    // TODO: Look into if const is included in symbol names.
-
-                    BSTR type_name_buffer;
-                    if (hr = type->get_name(&type_name_buffer); hr == S_OK)
-                    {
-                        File::StringViewType type_name{type_name_buffer};
-                        Output::send(STR("    type name: {}\n"), type_name);
-                    }
-
-                    BSTR type_undecorated_name_buffer;
-                    if (hr = type->get_undecoratedName(&type_undecorated_name_buffer); hr == S_OK)
-                    {
-                        File::StringViewType type_undecorated_name{type_name_buffer};
-                        type_undecorated_name = type_undecorated_name_buffer;
-                        Output::send(STR("    undecorated type name: {}\n"), type_undecorated_name);
-                    }
-
-                    BasicType btBaseType;
-                    if (hr = type->get_baseType((DWORD*)&btBaseType); hr == S_OK)
-                    {
-                        Output::send(STR("    Has type base type: {}\n"), (int)btBaseType);
-                    }
-                }
-
-                IDiaSymbol* sub_type;
-                if (hr = sub_sub_symbol->get_baseSymbol(&sub_type); hr == S_OK)
-                {
-                    Output::send(STR("    HAS BASE SYMBOL   \n"));
-                }
-
-                sub_sub_symbol = nullptr;
-            }
-
-            //SysFreeString(symbol_name_buffer);
-            //SysFreeString(symbol_undecorated_name_buffer);
-
-            sub_symbol = nullptr;
-            sub_sub_symbols = nullptr;
-        }
-
-        sub_symbols = nullptr;
-        symbol = nullptr;
-        dia_global_symbols_enum = nullptr;
     }
 
     auto VTableDumper::generate_code(VTableOrMemberVars vtable_or_member_vars) -> void
     {
         setup_symbol_loader();
-
-        // TODO: Figure out what to do if a legacy struct still exists alongside the new struct
-        //       An example of this is UField and FField. Both exist in 4.25+
-        //       FField & UField are special and will not be combined
-        //       All other types, that only differ by the prefix, must have their generated non-function-body files merged into one
-        //       This should be done, confirm it before removing this comment
 
         std::unordered_map<File::StringType, SymbolNameInfo> vtable_names;
         std::unordered_map<File::StringType, SymbolNameInfo> member_vars_names;
@@ -1680,12 +1575,12 @@ namespace RC::UVTD
         {
             if (object_item.valid_for_vtable == ValidForVTable::Yes)
             {
-                vtable_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix, object_item.valid_for_vtable, object_item.valid_for_member_vars});
+                vtable_names.emplace(object_item.name, SymbolNameInfo{object_item.valid_for_vtable, object_item.valid_for_member_vars});
             }
 
             if (object_item.valid_for_member_vars == ValidForMemberVars::Yes)
             {
-                member_vars_names.emplace(object_item.name, SymbolNameInfo{object_item.replace_u_prefix_with_f_prefix, object_item.valid_for_vtable, object_item.valid_for_member_vars});
+                member_vars_names.emplace(object_item.name, SymbolNameInfo{object_item.valid_for_vtable, object_item.valid_for_member_vars});
             }
         }
 
@@ -1701,7 +1596,6 @@ namespace RC::UVTD
 
     auto main(VTableOrMemberVars vtable_or_member_vars) -> void
     {
-        /**/
         TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_12.pdb"};
@@ -1709,8 +1603,6 @@ namespace RC::UVTD
             }
             CoUninitialize();
         });
-        //Output::send(STR("Done\n"));
-        //return;
         TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_13.pdb"};
@@ -1809,7 +1701,6 @@ namespace RC::UVTD
             }
             CoUninitialize();
         });
-        //*/
         TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/4_27.pdb"};
@@ -1817,15 +1708,14 @@ namespace RC::UVTD
             }
             CoUninitialize();
         });
-        // WITH_CASE_PRESERVING_NAMES
         TRY([&] {
             {
+                // WITH_CASE_PRESERVING_NAMES
                 VTableDumper vtable_dumper{"PDBs/4_27_CasePreserving.pdb"};
                 vtable_dumper.generate_code(vtable_or_member_vars);
             }
             CoUninitialize();
         });
-        /**/
         TRY([&] {
             {
                 VTableDumper vtable_dumper{"PDBs/5_00.pdb"};
@@ -1833,12 +1723,10 @@ namespace RC::UVTD
             }
             CoUninitialize();
         });
-        //*/
 
         TRY([&] {
-            generate_files("GeneratedVTables", vtable_or_member_vars);
+            generate_files(vtable_or_member_vars);
             Output::send(STR("Code generated.\n"));
         });
-        //});
     }
 }
