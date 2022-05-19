@@ -32,6 +32,8 @@ namespace RC::UVTD
         ValidForVTable valid_for_vtable{};
         ValidForMemberVars valid_for_member_vars{};
     };
+    // TODO: UConsole isn't found in all PDBs by this tool for some reason. Fix it.
+    //       For now, to avoid problems, let's not generate for UConsole.
     static std::vector<ObjectItem> s_object_items{
             {STR("UObjectBase"), ValidForVTable::Yes, ValidForMemberVars::Yes},
             {STR("UObjectBaseUtility"), ValidForVTable::Yes, ValidForMemberVars::No},
@@ -39,6 +41,7 @@ namespace RC::UVTD
             {STR("UScriptStruct::ICppStructOps"), ValidForVTable::Yes, ValidForMemberVars::Yes},
             {STR("FOutputDevice"), ValidForVTable::Yes, ValidForMemberVars::Yes},
             {STR("UStruct"), ValidForVTable::Yes, ValidForMemberVars::Yes},
+            //{STR("UConsole"), ValidForVTable::Yes, ValidForMemberVars::Yes},
             {STR("FMalloc"), ValidForVTable::Yes, ValidForMemberVars::Yes},
             {STR("FField"), ValidForVTable::Yes, ValidForMemberVars::Yes},
             {STR("UField"), ValidForVTable::Yes, ValidForMemberVars::Yes},
@@ -89,6 +92,7 @@ namespace RC::UVTD
             STR("UStruct"),
             STR("UScriptStruct"),
             STR("FOutputDevice"),
+            //STR("UConsole"),
             STR("FMalloc"),
             STR("UField"),
             STR("FField"),
@@ -1011,6 +1015,7 @@ namespace RC::UVTD
         static std::unordered_map<File::StringType, uint32_t> functions_already_dumped{};
 
         auto symbol_name = get_symbol_name(symbol);
+        //Output::send(STR("symbol_name: {}\n"), symbol_name);
 
         bool could_not_replace_prefix{};
         for (const auto& UPrefixed : UPrefixToFPrefix)
@@ -1113,6 +1118,7 @@ namespace RC::UVTD
 
         for (const auto&[name, name_info] : names)
         {
+            //Output::send(STR("Looking for {}\n"), name);
             HRESULT hr{};
             if (hr = dia_session->findChildren(nullptr, SymTagNull, nullptr, nsNone, &dia_global_symbols_enum); hr != S_OK)
             {
@@ -1137,6 +1143,13 @@ namespace RC::UVTD
             ULONG num_symbols_fetched;
 
             sub_symbols->Next(1, &sub_symbol, &num_symbols_fetched);
+            if (name == STR("UConsole"))
+            {
+                LONG count;
+                sub_symbols->get_Count(&count);
+                //Output::send(STR("  Symbols count: {}\n"), count);
+                //Output::send(STR("  sub_symbol: {}\n"), (void*)sub_symbol);
+            }
             if (!sub_symbol)
             {
                 //Output::send(STR("Missed symbol '{}'\n"), name);
@@ -1395,6 +1408,7 @@ namespace RC::UVTD
                     virtual_src_dumper.send(STR("#include <Unreal/UClass.hpp>\n"));
                     virtual_src_dumper.send(STR("#include <Unreal/World.hpp>\n"));
                     virtual_src_dumper.send(STR("#include <Unreal/UEnum.hpp>\n"));
+                    //virtual_src_dumper.send(STR("#include <Unreal/UConsole.hpp>\n"));
                     virtual_src_dumper.send(STR("\n"));
                     virtual_src_dumper.send(STR("namespace RC::Unreal\n"));
                     virtual_src_dumper.send(STR("{\n"));
