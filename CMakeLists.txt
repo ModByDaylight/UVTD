@@ -1,81 +1,69 @@
-﻿cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.18)
 message("Project: UnrealVTableDumper")
+
+set(MAKE_DEPENDENCIES_SHARED 0)
+
+if (${MAKE_DEPENDENCIES_SHARED} EQUAL 0)
+    set(MAKE_DEPENDENCIES_STATIC 1)
+    set(DEPENDENCY_BUILD_TYPE STATIC)
+    set(BUILD_SHARED_LIBS 0)
+else ()
+    set(MAKE_DEPENDENCIES_STATIC 0)
+    set(DEPENDENCY_BUILD_TYPE SHARED)
+    set(BUILD_SHARED_LIBS 1)
+endif ()
 
 # We're only using C++20 features but we need to use C++23 so that we get std::format which only exists in the "latest" flag in MSVC
 set(CMAKE_CXX_STANDARD 23)
 
-set(RC_VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
-
-if (NOT EXISTS "${CMAKE_SOURCE_DIR}/local_repo_path.build_option")
-    # Path to RC is not defined, so we'll assume that git submodules are being used
-    set(RC_LOCAL_REPO_PATH_INTERNAL ${RC_VENDOR_DIR}/RC)
-    set(RC_COMMON_CMAKE_FILE ${RC_VENDOR_DIR}/RC/CMake/RC_Common.cmake)
-    message("Path to RC repo not defined. Using default: '${RC_LOCAL_REPO_PATH_INTERNAL}'")
-else()
-    file(READ ${CMAKE_SOURCE_DIR}/local_repo_path.build_option RC_LOCAL_REPO_PATH_FROM_FILE)
-    if (IS_ABSOLUTE ${RC_LOCAL_REPO_PATH_FROM_FILE})
-        set(RC_LOCAL_REPO_PATH_INTERNAL ${RC_LOCAL_REPO_PATH_FROM_FILE})
-
-    else ()
-        set(RC_LOCAL_REPO_PATH_INTERNAL ${CMAKE_CURRENT_SOURCE_DIR}/${RC_LOCAL_REPO_PATH_FROM_FILE})
-    endif ()
-    set(RC_COMMON_CMAKE_FILE ${RC_LOCAL_REPO_PATH_INTERNAL}/CMake/RC_Common.cmake)
-    message("Path for the 'RC' repo overridden, RC_LOCAL_REPO_PATH=${RC_LOCAL_REPO_PATH_INTERNAL}")
-endif()
-
 set(TARGET UnrealVTableDumper)
 project(${TARGET})
 
-include(${RC_COMMON_CMAKE_FILE})
+set(PRIVATE_COMPILE_DEFINITIONS
+        $<${MAKE_DEPENDENCIES_SHARED}:RC_EXPORT RC_FUNCTION_EXPORTS>
+        $<${MAKE_DEPENDENCIES_STATIC}:RC_FUNCTION_BUILD_STATIC>)
+set(PRIVATE_COMPILE_OPTIONS /MP $<$<CONFIG:RELEASE>:/Zi> /W3 /wd4005 /wd4251)
+set(PRIVATE_LINK_OPTIONS /DEBUG:FULL)
+set(PUBLIC_COMPILE_FEATURES cxx_std_20)
+
+set(UVTD_COMPILE_DEFINITIONS
+        RC_FILE_BUILD_STATIC
+        RC_DYNAMIC_OUTPUT_BUILD_STATIC
+        RC_SINGLE_PASS_SIG_SCANNER_BUILD_STATIC
+        RC_SINGLE_PASS_SIG_SCANNER_STATIC
+        RC_UNREAL_BUILD_STATIC
+        RC_INPUT_BUILD_STATIC
+        RC_LUA_MADE_SIMPLE_BUILD_STATIC
+        RC_FUNCTION_TIMER_BUILD_STATIC
+        RC_PARSER_BASE_BUILD_STATIC
+        RC_INI_PARSER_BUILD_STATIC
+        RC_JSON_BUILD_STATIC
+        )
+
+add_subdirectory("Dependencies/File")
+add_subdirectory("Dependencies/Input")
+add_subdirectory("Dependencies/DynamicOutput")
+add_subdirectory("Dependencies/Function")
+add_subdirectory("Dependencies/Helpers")
 
 # Tell WinAPI macros to map to unicode functions instead of ansi
 add_compile_definitions(_UNICODE)
 add_compile_definitions(UNICODE)
 
-set(SOURCES
-        "src/main.cpp"
-        #"src/UVTD_DbgHelp.cpp"
-        "src/UVTD_DIA.cpp"
+set(${TARGET}_Sources
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/UVTD_DIA.cpp"
         )
 
-# We don't ever want this to be statically linked because we need to actually have a dll to inject
-message("Creating shared ${TARGET} library")
-#add_library(${TARGET} SHARED ${SOURCES})
-add_executable(${TARGET} ${SOURCES})
+add_executable(${TARGET} ${${TARGET}_Sources})
+target_include_directories(${TARGET} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> "${CMAKE_CURRENT_SOURCE_DIR}/external_deps/DIA_SDK/include")
+target_compile_options(${TARGET} PRIVATE ${PRIVATE_COMPILE_OPTIONS})
+target_link_options(${TARGET} PRIVATE ${PRIVATE_LINK_OPTIONS})
+target_compile_features(${TARGET} PUBLIC ${PUBLIC_COMPILE_FEATURES})
+set(UVTD_LINK_WITH_LIBRARIES File Input DynamicOutput)
+set(UVTD_LINK_WITH_INTERFACE_LIBRARIES Function Helpers)
+target_link_libraries(${TARGET} PRIVATE ${UVTD_LINK_WITH_LIBRARIES} ${UVTD_LINK_WITH_INTERFACE_LIBRARIES} "${CMAKE_CURRENT_SOURCE_DIR}/external_deps/DIA_SDK/lib/amd64/diaguids.lib")
 
-if (${CMAKE_BUILD_TYPE} MATCHES Release)
-    target_compile_options(${TARGET} PUBLIC /Zi)
+if (${MAKE_DEPENDENCIES_STATIC} EQUAL 1)
+    target_compile_definitions(${TARGET} PRIVATE ${UVTD_COMPILE_DEFINITIONS})
 endif()
-
-target_compile_options(${TARGET} PUBLIC /MP /W4)
-target_link_options(${TARGET} PUBLIC /DEBUG:FULL)
-
-add_rc_dependencies_to_targets(
-        TARGETS ${TARGET}
-        DEPENDENCIES
-        #Unreal
-        Input
-        Helpers
-        Function
-
-        # Sub-dependencies that needs to get linked if UVTD is built as a dynamic library and RC is built as a static library
-        File
-        DynamicOutput
-        #SinglePassSigScanner
-        #LuaRaw
-)
-
-target_include_directories(${TARGET} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-target_compile_features(${TARGET} PUBLIC cxx_std_20)
-
-# Third-Party Dependencies
-find_library(dbghelp NAMES dbghelp ${PROJECT_BINARY_DIR})
-message(STATUS "find_library returned ${dbghelp}")
-add_library(dbghelp SHARED IMPORTED)
-set_property(TARGET dbghelp PROPERTY IMPORTED_LOCATION "${dbghelp}")
-target_link_libraries(${TARGET} PRIVATE DbgHelp)
-
-#target_link_libraries(${TARGET} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external_deps/DIA_SDK/lib/amd64/diaguids.lib")
-#target_include_directories(${TARGET} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external_deps/DIA_SDK/include")
-target_link_libraries(${TARGET} PRIVATE "D:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\DIA SDK\\lib\\amd64\\diaguids.lib")
-target_include_directories(${TARGET} PRIVATE "D:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\DIA SDK\\include")
