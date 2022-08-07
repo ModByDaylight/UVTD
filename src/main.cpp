@@ -1,125 +1,153 @@
-#include <iostream>
-#include <filesystem>
-
-#include <DynamicOutput/DynamicOutput.hpp>
-#include <Helpers/String.hpp>
-#include <UVTD/UVTD.hpp>
-
-#define NOMINMAX
+#include <string>
+#include <fstream>
 #include <Windows.h>
+#include <Psapi.h>
+#include <atlbase.h>
+#include <dia2.h>
+#include <DbgHelp.h>
+#include <filesystem>
+#include <iostream>
 
-using namespace RC;
+///From TypeLayoutGenerator.cpp
+///Yes I know I am a bad person for not making a header file
+bool GenerateTypeLayoutFile(const std::wstring& OutputDirectory, const CComPtr<IDiaSymbol>& GlobalScope, const std::wstring& UDTName);
 
-auto static get_user_selection() -> int32_t
-{
-    Output::send(STR("What would you like to do ?\n"));
-    Output::send(STR("1. Generate VTable layouts\n"));
-    Output::send(STR("2. Generate class/struct member variable layouts\n"));
-    Output::send(STR("3. Both\n"));
-    Output::send(STR("0. Exit\n"));
-
-    int32_t selection{};
-    std::cin >> selection;
-    if (!std::cin.good())
-    {
-        selection = 9;
-        std::cin.clear();
-        std::cin.ignore();
+HRESULT CoCreateDiaDataSource(HMODULE diaDllHandle, CComPtr<IDiaDataSource>& OutDataSource) {
+    auto DllGetClassObject = (BOOL (WINAPI*)(REFCLSID, REFIID, LPVOID *)) GetProcAddress(diaDllHandle, "DllGetClassObject");
+    if (!DllGetClassObject) {
+        return HRESULT_FROM_WIN32(GetLastError());
     }
-
-    std::cin.get();
-    return selection;
+    CComPtr<IClassFactory> pClassFactory;
+    HRESULT hr = DllGetClassObject(CLSID_DiaSource, IID_IClassFactory, reinterpret_cast<LPVOID *>(&pClassFactory));
+    if (FAILED(hr)) {
+        return hr;
+    }
+    hr = pClassFactory->CreateInstance(nullptr, IID_IDiaDataSource, (void **) &OutDataSource);
+    if (FAILED(hr)) {
+        return hr;
+    }
+    return S_OK;
 }
 
-// We're outside DllMain here
-auto thread_dll_start([[maybe_unused]]LPVOID thread_param) -> unsigned long
-{
+enum class ETypeSelectorImportance {
+    Normal,
+    Important,
+    Optional
+};
 
-    std::filesystem::path module_path{};
+struct FTypeSelector {
+    std::wstring TypeName;
+    ETypeSelectorImportance Importance;
+};
 
-    if (thread_param)
-    {
-        auto module_handle = reinterpret_cast<HMODULE>(thread_param);
-        wchar_t module_filename_buffer[1024]{'\0'};
-        GetModuleFileNameW(module_handle, module_filename_buffer, sizeof(module_filename_buffer) / sizeof(wchar_t));
-        module_path = module_filename_buffer;
-        module_path = module_path.parent_path();
+bool ReadTypesToDump(const std::wstring& FileName, std::vector<FTypeSelector>& OutTypesToDump) {
+    std::wifstream FileStream{FileName};
+    if (!FileStream.good()) {
+        return false;
     }
 
-    Output::set_default_devices<Output::DebugConsoleDevice, Output::NewFileDevice>();
-    auto& file_device = Output::get_device<Output::NewFileDevice>();
-    file_device.set_file_name_and_path(module_path / "UVTD.log");
+    while (!FileStream.eof()) {
+        std::wstring FileReadLine;
+        std::getline(FileStream, FileReadLine);
 
-    try
-    {
-        Output::send(STR("Unreal Virtual Table Dumper -> START\n"));
+        ///Skip empty lines and comments starting with a #
+        if (!FileReadLine.empty() && FileReadLine[0] != '#') {
+            ETypeSelectorImportance Importance = ETypeSelectorImportance::Normal;
+            wchar_t FirstSymbol = FileReadLine[0];
 
-        for (int32_t selection = get_user_selection(); selection != 1337; selection = get_user_selection())
-        {
-            if (selection == 0)
-            {
-                break;
+            ///Optional type declarations start with a question mark
+            if (FirstSymbol == TEXT('?')) {
+                Importance = ETypeSelectorImportance::Optional;
+                FileReadLine.erase(0, 1);
             }
-            else if (selection == 1)
-            {
-                Output::send(STR("Generating VTable layouts...\n"));
-                UVTD::main(UVTD::VTableOrMemberVars::VTable);
+            ///Important type declarations are prefixed with an exclamination mark
+            if (FirstSymbol == TEXT('!')) {
+                Importance = ETypeSelectorImportance::Important;
+                FileReadLine.erase(0, 1);
             }
-            else if (selection == 2)
-            {
-                Output::send(STR("Generating class/struct member variable layouts...\n"));
-                UVTD::main(UVTD::VTableOrMemberVars::MemberVars);
-            }
-            else if (selection == 3)
-            {
-                Output::send(STR("Generating VTable layouts...\n"));
-                UVTD::main(UVTD::VTableOrMemberVars::VTable);
+            OutTypesToDump.push_back(FTypeSelector{FileReadLine, Importance});
+        }
+    }
+    return !OutTypesToDump.empty();
+}
 
-                Output::send(STR("Generating class/struct member variable layouts...\n"));
-                UVTD::main(UVTD::VTableOrMemberVars::MemberVars);
+bool DumpTypesForDebugFile(const std::filesystem::path& PDBFilePath, const std::filesystem::path& OutputFolderPath, HMODULE DiaModuleHandle, const std::vector<FTypeSelector>& TypesToDump) {
+    CComPtr<IDiaDataSource> DiaDataSource;
+
+    if (FAILED(CoCreateDiaDataSource(DiaModuleHandle, DiaDataSource))) {
+        std::wcerr << TEXT("Failed to create DIA data source from dia DLL handle") << std::endl;
+        exit(1);
+    }
+
+    if (FAILED(DiaDataSource->loadDataFromPdb(PDBFilePath.wstring().c_str()))) {
+        std::wcerr << TEXT("Failed to load data from PDB file ") << PDBFilePath.wstring() << std::endl;
+        return false;
+    }
+
+    CComPtr<IDiaSession> DiaSession;
+    if (FAILED(DiaDataSource->openSession(&DiaSession))) {
+        std::wcerr << TEXT("Failed to open DIA session for PDB file ") << PDBFilePath.wstring() << std::endl;
+        return false;
+    }
+
+    CComPtr<IDiaSymbol> GlobalScopeSymbol;
+    if (FAILED(DiaSession->get_globalScope(&GlobalScopeSymbol))) {
+        std::wcerr << TEXT("Failed to retrieve DIA global scope symbol for PDB file ") << PDBFilePath.wstring() << std::endl;
+        return false;
+    }
+
+    std::filesystem::path OutputDir = OutputFolderPath / PDBFilePath.filename().replace_extension();
+    create_directories(OutputDir);
+
+    std::wcout << TEXT("Begin dumping types for PDB file ") << PDBFilePath.filename().wstring() << std::endl;
+    for (const FTypeSelector& TypeName : TypesToDump) {
+        std::wcout << TEXT("Dumping type ") << TypeName.TypeName << std::endl;
+        if (!GenerateTypeLayoutFile(OutputDir.wstring(), GlobalScopeSymbol, TypeName.TypeName)) {
+            if (TypeName.Importance != ETypeSelectorImportance::Optional) {
+                std::wcout << TEXT("Failed to dump type ") << TypeName.TypeName << std::endl;
             }
-            else if (selection == 9)
-            {
-                // Reserved for NOP, ask user again.
+            if (TypeName.Importance == ETypeSelectorImportance::Important) {
+                std::wcout << TEXT("Type was marked as Important (!). Aborting the dump.") << std::endl;
+                return false;
             }
         }
     }
-    catch (std::exception& e)
-    {
-        Output::send(STR("Exception caught: {}\n"), to_wstring(e.what()));
+
+    std::wcout << TEXT("Finished dumping types for PDB file ") << PDBFilePath.filename().wstring() << std::endl;
+    return true;
+}
+
+int main(int argc, const char** argv) {
+    std::wcout << TEXT("Starting the UVTD") << std::endl;
+    std::filesystem::path CurrentDirectory = std::filesystem::absolute(TEXT("."));
+    std::wcout << TEXT("Run Directory: ") << CurrentDirectory.wstring() << std::endl;
+
+    std::filesystem::path InputPDBsFolder = CurrentDirectory / TEXT("GameDebugFiles");
+    std::filesystem::path OutputFolder = CurrentDirectory / TEXT("Output");
+    std::filesystem::path DiaDllPath = CurrentDirectory / TEXT("msdia140.dll");
+
+    HMODULE DiaDllHandle = LoadLibraryW(DiaDllPath.wstring().c_str());
+    if (DiaDllHandle == nullptr) {
+        std::wcout << TEXT("Failed to load msdia140.dll file, make sure it's in the run director at ") << DiaDllPath << std::endl;
+        return 1;
     }
 
+    std::vector<FTypeSelector> TypesToDump;
+    if (!ReadTypesToDump(TEXT("TypesToDump.txt"), TypesToDump)) {
+        std::wcout << TEXT("Failed to read a list of types to dump from TypesToDump.txt") << std::endl;
+        return 1;
+    }
+
+    std::wcout << TEXT("Scanning the input directory ") << InputPDBsFolder.wstring() << TEXT(" for PDB files") << std::endl;
+    for (auto& DirectoryEntry : std::filesystem::directory_iterator{InputPDBsFolder}) {
+        ///We are only interested in regular PDB files
+        if (DirectoryEntry.is_regular_file() && DirectoryEntry.path().extension() == TEXT(".pdb")) {
+
+            if (!DumpTypesForDebugFile(DirectoryEntry.path(), OutputFolder, DiaDllHandle, TypesToDump)) {
+                std::wcout << TEXT("Failed to dump types for debug file ") << DirectoryEntry.path().wstring() << std::endl;
+                return 1;
+            }
+        }
+    }
     return 0;
-}
-
-// We're still inside DllMain so be careful what you do here
-auto dll_process_attached(HMODULE moduleHandle) -> void
-{
-    if (HANDLE handle = CreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(thread_dll_start), moduleHandle, 0, nullptr); handle)
-    {
-        CloseHandle(handle);
-    }
-}
-
-auto main() -> int
-{
-    thread_dll_start(nullptr);
-    return 0;
-}
-
-auto DllMain(HMODULE hModule, DWORD ul_reason_for_call, [[maybe_unused]] LPVOID lpReserved) -> BOOL
-{
-    switch (ul_reason_for_call)
-    {
-        case DLL_PROCESS_ATTACH:
-            dll_process_attached(hModule);
-            break;
-        case DLL_THREAD_ATTACH:
-            break;
-        case DLL_THREAD_DETACH:
-            break;
-        case DLL_PROCESS_DETACH:
-            break;
-    }
-    return TRUE;
 }

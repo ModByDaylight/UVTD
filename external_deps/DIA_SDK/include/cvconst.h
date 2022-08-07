@@ -72,6 +72,7 @@ typedef enum THUNK_ORDINAL
     THUNK_ORDINAL_TRAMP_INCREMENTAL,
     THUNK_ORDINAL_TRAMP_BRANCHISLAND,
     THUNK_ORDINAL_TRAMP_STRICTICF,
+    THUNK_ORDINAL_TRAMP_ARM64XSAMEADDRESS,
 } THUNK_ORDINAL;
 
 
@@ -4003,7 +4004,7 @@ typedef enum CV_HREG_e
 
     CV_AMD64_SSP        =  846,      // CET- Shadow Stack Pointer
 
-    CV_AMD64_TMM0       =  847,     // AMX tile registers
+    CV_AMD64_TMM0       =  847,      // AMX tile registers
     CV_AMD64_TMM1       =  848,
     CV_AMD64_TMM2       =  849,
     CV_AMD64_TMM3       =  850,
@@ -4011,6 +4012,7 @@ typedef enum CV_HREG_e
     CV_AMD64_TMM5       =  852,
     CV_AMD64_TMM6       =  853,
     CV_AMD64_TMM7       =  854,
+    CV_AMD64_TILECFG    =  855,      // AMX tile cfg register
 
     // Note:  Next set of platform registers need to go into a new enum...
     // this one is above 44K now.

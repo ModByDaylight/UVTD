@@ -3,7 +3,7 @@
 /* this ALWAYS GENERATED file contains the definitions for the interfaces */
 
 
- /* File created by MIDL compiler version 8.01.0622 */
+ /* File created by MIDL compiler version 8.01.0626 */
 /* @@MIDL_FILE_HEADING(  ) */
 
 #pragma warning( disable: 4049 )  /* more than 64k source lines */
@@ -87,6 +87,13 @@ typedef interface IDiaEnumSymbols IDiaEnumSymbols;
 typedef interface IDiaEnumSymbolsByAddr IDiaEnumSymbolsByAddr;
 
 #endif 	/* __IDiaEnumSymbolsByAddr_FWD_DEFINED__ */
+
+
+#ifndef __IDiaEnumSymbolsByAddr2_FWD_DEFINED__
+#define __IDiaEnumSymbolsByAddr2_FWD_DEFINED__
+typedef interface IDiaEnumSymbolsByAddr2 IDiaEnumSymbolsByAddr2;
+
+#endif 	/* __IDiaEnumSymbolsByAddr2_FWD_DEFINED__ */
 
 
 #ifndef __IDiaEnumSourceFiles_FWD_DEFINED__
@@ -417,6 +424,20 @@ typedef interface IDiaSymbol8 IDiaSymbol8;
 typedef interface IDiaSymbol9 IDiaSymbol9;
 
 #endif 	/* __IDiaSymbol9_FWD_DEFINED__ */
+
+
+#ifndef __IDiaEnumSymbolsByAddr_FWD_DEFINED__
+#define __IDiaEnumSymbolsByAddr_FWD_DEFINED__
+typedef interface IDiaEnumSymbolsByAddr IDiaEnumSymbolsByAddr;
+
+#endif 	/* __IDiaEnumSymbolsByAddr_FWD_DEFINED__ */
+
+
+#ifndef __IDiaEnumSymbolsByAddr2_FWD_DEFINED__
+#define __IDiaEnumSymbolsByAddr2_FWD_DEFINED__
+typedef interface IDiaEnumSymbolsByAddr2 IDiaEnumSymbolsByAddr2;
+
+#endif 	/* __IDiaEnumSymbolsByAddr2_FWD_DEFINED__ */
 
 
 #ifndef __IDiaPropertyStorage_FWD_DEFINED__
@@ -1460,6 +1481,203 @@ EXTERN_C const IID IID_IDiaEnumSymbolsByAddr;
 
 
 #endif 	/* __IDiaEnumSymbolsByAddr_INTERFACE_DEFINED__ */
+
+
+#ifndef __IDiaEnumSymbolsByAddr2_INTERFACE_DEFINED__
+#define __IDiaEnumSymbolsByAddr2_INTERFACE_DEFINED__
+
+/* interface IDiaEnumSymbolsByAddr2 */
+/* [unique][helpstring][local][uuid][object] */ 
+
+
+EXTERN_C const IID IID_IDiaEnumSymbolsByAddr2;
+
+#if defined(__cplusplus) && !defined(CINTERFACE)
+    
+    MIDL_INTERFACE("1E45BD02-BE45-4D71-BA32-0E576CFCD59F")
+    IDiaEnumSymbolsByAddr2 : public IDiaEnumSymbolsByAddr
+    {
+    public:
+        virtual HRESULT STDMETHODCALLTYPE symbolByAddrEx( 
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ DWORD isect,
+            /* [in] */ DWORD offset,
+            /* [retval][out] */ IDiaSymbol **ppSymbol) = 0;
+        
+        virtual HRESULT STDMETHODCALLTYPE symbolByRVAEx( 
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ DWORD relativeVirtualAddress,
+            /* [retval][out] */ IDiaSymbol **ppSymbol) = 0;
+        
+        virtual HRESULT STDMETHODCALLTYPE symbolByVAEx( 
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ ULONGLONG virtualAddress,
+            /* [retval][out] */ IDiaSymbol **ppSymbol) = 0;
+        
+        virtual HRESULT STDMETHODCALLTYPE NextEx( 
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ ULONG celt,
+            /* [out] */ IDiaSymbol **rgelt,
+            /* [out] */ ULONG *pceltFetched) = 0;
+        
+        virtual HRESULT STDMETHODCALLTYPE PrevEx( 
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ ULONG celt,
+            /* [out] */ IDiaSymbol **rgelt,
+            /* [out] */ ULONG *pceltFetched) = 0;
+        
+    };
+    
+    
+#else 	/* C style interface */
+
+    typedef struct IDiaEnumSymbolsByAddr2Vtbl
+    {
+        BEGIN_INTERFACE
+        
+        HRESULT ( STDMETHODCALLTYPE *QueryInterface )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ REFIID riid,
+            /* [annotation][iid_is][out] */ 
+            _COM_Outptr_  void **ppvObject);
+        
+        ULONG ( STDMETHODCALLTYPE *AddRef )( 
+            IDiaEnumSymbolsByAddr2 * This);
+        
+        ULONG ( STDMETHODCALLTYPE *Release )( 
+            IDiaEnumSymbolsByAddr2 * This);
+        
+        /* [helpstring] */ HRESULT ( STDMETHODCALLTYPE *symbolByAddr )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ DWORD isect,
+            /* [in] */ DWORD offset,
+            /* [retval][out] */ IDiaSymbol **ppSymbol);
+        
+        /* [helpstring] */ HRESULT ( STDMETHODCALLTYPE *symbolByRVA )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ DWORD relativeVirtualAddress,
+            /* [retval][out] */ IDiaSymbol **ppSymbol);
+        
+        /* [helpstring] */ HRESULT ( STDMETHODCALLTYPE *symbolByVA )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ ULONGLONG virtualAddress,
+            /* [retval][out] */ IDiaSymbol **ppSymbol);
+        
+        HRESULT ( STDMETHODCALLTYPE *Next )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ ULONG celt,
+            /* [out] */ IDiaSymbol **rgelt,
+            /* [out] */ ULONG *pceltFetched);
+        
+        HRESULT ( STDMETHODCALLTYPE *Prev )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ ULONG celt,
+            /* [out] */ IDiaSymbol **rgelt,
+            /* [out] */ ULONG *pceltFetched);
+        
+        HRESULT ( STDMETHODCALLTYPE *Clone )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [out] */ IDiaEnumSymbolsByAddr **ppenum);
+        
+        HRESULT ( STDMETHODCALLTYPE *symbolByAddrEx )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ DWORD isect,
+            /* [in] */ DWORD offset,
+            /* [retval][out] */ IDiaSymbol **ppSymbol);
+        
+        HRESULT ( STDMETHODCALLTYPE *symbolByRVAEx )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ DWORD relativeVirtualAddress,
+            /* [retval][out] */ IDiaSymbol **ppSymbol);
+        
+        HRESULT ( STDMETHODCALLTYPE *symbolByVAEx )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ ULONGLONG virtualAddress,
+            /* [retval][out] */ IDiaSymbol **ppSymbol);
+        
+        HRESULT ( STDMETHODCALLTYPE *NextEx )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ ULONG celt,
+            /* [out] */ IDiaSymbol **rgelt,
+            /* [out] */ ULONG *pceltFetched);
+        
+        HRESULT ( STDMETHODCALLTYPE *PrevEx )( 
+            IDiaEnumSymbolsByAddr2 * This,
+            /* [in] */ BOOL fPromoteBlockSym,
+            /* [in] */ ULONG celt,
+            /* [out] */ IDiaSymbol **rgelt,
+            /* [out] */ ULONG *pceltFetched);
+        
+        END_INTERFACE
+    } IDiaEnumSymbolsByAddr2Vtbl;
+
+    interface IDiaEnumSymbolsByAddr2
+    {
+        CONST_VTBL struct IDiaEnumSymbolsByAddr2Vtbl *lpVtbl;
+    };
+
+    
+
+#ifdef COBJMACROS
+
+
+#define IDiaEnumSymbolsByAddr2_QueryInterface(This,riid,ppvObject)	\
+    ( (This)->lpVtbl -> QueryInterface(This,riid,ppvObject) ) 
+
+#define IDiaEnumSymbolsByAddr2_AddRef(This)	\
+    ( (This)->lpVtbl -> AddRef(This) ) 
+
+#define IDiaEnumSymbolsByAddr2_Release(This)	\
+    ( (This)->lpVtbl -> Release(This) ) 
+
+
+#define IDiaEnumSymbolsByAddr2_symbolByAddr(This,isect,offset,ppSymbol)	\
+    ( (This)->lpVtbl -> symbolByAddr(This,isect,offset,ppSymbol) ) 
+
+#define IDiaEnumSymbolsByAddr2_symbolByRVA(This,relativeVirtualAddress,ppSymbol)	\
+    ( (This)->lpVtbl -> symbolByRVA(This,relativeVirtualAddress,ppSymbol) ) 
+
+#define IDiaEnumSymbolsByAddr2_symbolByVA(This,virtualAddress,ppSymbol)	\
+    ( (This)->lpVtbl -> symbolByVA(This,virtualAddress,ppSymbol) ) 
+
+#define IDiaEnumSymbolsByAddr2_Next(This,celt,rgelt,pceltFetched)	\
+    ( (This)->lpVtbl -> Next(This,celt,rgelt,pceltFetched) ) 
+
+#define IDiaEnumSymbolsByAddr2_Prev(This,celt,rgelt,pceltFetched)	\
+    ( (This)->lpVtbl -> Prev(This,celt,rgelt,pceltFetched) ) 
+
+#define IDiaEnumSymbolsByAddr2_Clone(This,ppenum)	\
+    ( (This)->lpVtbl -> Clone(This,ppenum) ) 
+
+
+#define IDiaEnumSymbolsByAddr2_symbolByAddrEx(This,fPromoteBlockSym,isect,offset,ppSymbol)	\
+    ( (This)->lpVtbl -> symbolByAddrEx(This,fPromoteBlockSym,isect,offset,ppSymbol) ) 
+
+#define IDiaEnumSymbolsByAddr2_symbolByRVAEx(This,fPromoteBlockSym,relativeVirtualAddress,ppSymbol)	\
+    ( (This)->lpVtbl -> symbolByRVAEx(This,fPromoteBlockSym,relativeVirtualAddress,ppSymbol) ) 
+
+#define IDiaEnumSymbolsByAddr2_symbolByVAEx(This,fPromoteBlockSym,virtualAddress,ppSymbol)	\
+    ( (This)->lpVtbl -> symbolByVAEx(This,fPromoteBlockSym,virtualAddress,ppSymbol) ) 
+
+#define IDiaEnumSymbolsByAddr2_NextEx(This,fPromoteBlockSym,celt,rgelt,pceltFetched)	\
+    ( (This)->lpVtbl -> NextEx(This,fPromoteBlockSym,celt,rgelt,pceltFetched) ) 
+
+#define IDiaEnumSymbolsByAddr2_PrevEx(This,fPromoteBlockSym,celt,rgelt,pceltFetched)	\
+    ( (This)->lpVtbl -> PrevEx(This,fPromoteBlockSym,celt,rgelt,pceltFetched) ) 
+
+#endif /* COBJMACROS */
+
+
+#endif 	/* C style interface */
+
+
+
+
+#endif 	/* __IDiaEnumSymbolsByAddr2_INTERFACE_DEFINED__ */
 
 
 #ifndef __IDiaEnumSourceFiles_INTERFACE_DEFINED__
@@ -2800,7 +3018,7 @@ EXTERN_C const IID IID_IDiaEnumDebugStreams;
 #endif 	/* __IDiaEnumDebugStreams_INTERFACE_DEFINED__ */
 
 
-/* interface __MIDL_itf_dia2_0000_0016 */
+/* interface __MIDL_itf_dia2_0000_0017 */
 /* [local] */ 
 
 struct DiaAddressMapEntry
@@ -2810,8 +3028,8 @@ struct DiaAddressMapEntry
     } ;
 
 
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0016_v0_0_c_ifspec;
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0016_v0_0_s_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0017_v0_0_c_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0017_v0_0_s_ifspec;
 
 #ifndef __IDiaAddressMap_INTERFACE_DEFINED__
 #define __IDiaAddressMap_INTERFACE_DEFINED__
@@ -23762,11 +23980,11 @@ EXTERN_C const IID IID_IDiaInjectedSource;
 #endif 	/* __IDiaInjectedSource_INTERFACE_DEFINED__ */
 
 
-/* interface __MIDL_itf_dia2_0000_0033 */
+/* interface __MIDL_itf_dia2_0000_0034 */
 /* [local] */ 
 
 
-enum __MIDL___MIDL_itf_dia2_0000_0033_0001
+enum __MIDL___MIDL_itf_dia2_0000_0034_0001
     {
         E_DIA_INPROLOG	= ( HRESULT  )(( ( ( ( unsigned long  )1 << 31 )  | ( ( unsigned long  )( LONG  )0x6d << 16 )  )  | ( unsigned long  )100 ) ),
         E_DIA_SYNTAX	= ( E_DIA_INPROLOG + 1 ) ,
@@ -23775,8 +23993,8 @@ enum __MIDL___MIDL_itf_dia2_0000_0033_0001
     } ;
 
 
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0033_v0_0_c_ifspec;
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0033_v0_0_s_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0034_v0_0_c_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0034_v0_0_s_ifspec;
 
 #ifndef __IDiaStackWalkFrame_INTERFACE_DEFINED__
 #define __IDiaStackWalkFrame_INTERFACE_DEFINED__
@@ -24566,6 +24784,7 @@ EXTERN_C const IID IID_IDiaEnumTables;
 
 
 
+
 EXTERN_C const IID LIBID_Dia2Lib;
 
 EXTERN_C const CLSID CLSID_DiaSource;
@@ -24593,7 +24812,7 @@ DiaStackWalker;
 #endif
 #endif /* __Dia2Lib_LIBRARY_DEFINED__ */
 
-/* interface __MIDL_itf_dia2_0000_0039 */
+/* interface __MIDL_itf_dia2_0000_0040 */
 /* [local] */ 
 
 #define	DiaTable_Symbols	( L"Symbols" )
@@ -24616,8 +24835,8 @@ DiaStackWalker;
 
 
 
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0039_v0_0_c_ifspec;
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0039_v0_0_s_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0040_v0_0_c_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0040_v0_0_s_ifspec;
 
 #ifndef __IDiaPropertyStorage_INTERFACE_DEFINED__
 #define __IDiaPropertyStorage_INTERFACE_DEFINED__
@@ -25101,10 +25320,10 @@ EXTERN_C const IID IID_IDiaEnumStackFrames;
 #endif 	/* __IDiaEnumStackFrames_INTERFACE_DEFINED__ */
 
 
-/* interface __MIDL_itf_dia2_0000_0042 */
+/* interface __MIDL_itf_dia2_0000_0043 */
 /* [local] */ 
 
-typedef /* [public] */ struct __MIDL___MIDL_itf_dia2_0000_0042_0001
+typedef /* [public] */ struct __MIDL___MIDL_itf_dia2_0000_0043_0001
     {
     DWORD ulOffStart;
     DWORD cbProcSize;
@@ -25115,8 +25334,8 @@ typedef /* [public] */ struct __MIDL___MIDL_itf_dia2_0000_0042_0001
 
 
 
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0042_v0_0_c_ifspec;
-extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0042_v0_0_s_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0043_v0_0_c_ifspec;
+extern RPC_IF_HANDLE __MIDL_itf_dia2_0000_0043_v0_0_s_ifspec;
 
 #ifndef __IDiaStackWalkHelper_INTERFACE_DEFINED__
 #define __IDiaStackWalkHelper_INTERFACE_DEFINED__
