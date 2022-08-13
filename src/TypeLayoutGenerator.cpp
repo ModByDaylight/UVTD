@@ -105,9 +105,27 @@ struct FMemberVariable {
     EMemberAccess VariableAccess{EMemberAccess::Public};
     bool bIsBitfield{false};
     bool bIsArray{false};
+    bool bIsUDT{false};
     int32_t BitfieldBitPosition{0};
     int32_t BitfieldBitSize{0};
     int32_t ArraySize{0};
+    /**
+     * True if the property needs value initialization.
+     * Value initialization is generally needed for all integral types and pointer types,
+     * and also for UDTs with no default constructor
+     * If you do not initialize these types explicitly, they will have garbage value
+     */
+    bool bNeedsValueInit{false};
+
+    /** Value to populate the variable with for default value init */
+    std::wstring ValueInitDefaultValue{};
+
+    /**
+     * True if the property needs the NoInit constructor call
+     * This is used to prevent the default initialization in places where it shouldn't happen
+     * and generally speaking constructor should do nothing
+     */
+    bool bNeedsNoInitConstructorCall{false};
 };
 
 struct FVirtualFunctionDeclaration {
@@ -117,9 +135,17 @@ struct FVirtualFunctionDeclaration {
     EMemberAccess FunctionAccess{EMemberAccess::Public};
 };
 
+struct FParentClassInfo {
+    std::wstring ClassName;
+    EMemberAccess ClassAccess{EMemberAccess::Unspecified};
+    int32_t ClassDataOffset{0};
+    int32_t ClassSize{0};
+    bool bHasConstructor{false};
+};
+
 struct FUserDefinedTypeLayout {
     std::wstring ClassName{};
-    std::wstring ParentClassName{};
+    std::vector<FParentClassInfo> ParentClasses{};
     std::vector<FMemberVariable> MemberVariables{};
     std::vector<FVirtualFunctionDeclaration> VirtualFunctions{};
     int32_t VirtualTableEntriesCount{0};
@@ -527,6 +553,106 @@ std::wstring GenerateDefaultValueForType(const CComPtr<IDiaSymbol>& TypeSymbol) 
     return Printf(TEXT("<unhandled symbol type with tag %lu>"), SymbolTag);
 }
 
+bool DoesTypeNeedValueInitialization(const CComPtr<IDiaSymbol>& TypeSymbol, std::wstring& OutValueInitDefaultValue) {
+    DWORD SymbolTag = SymTagNull;
+    if (!SUCCEEDED(TypeSymbol->get_symTag(&SymbolTag))) {
+        return false;
+    }
+
+    ///All basic types need value initialization, or they will have trash as value
+    if (SymbolTag == SymTagBaseType) {
+        OutValueInitDefaultValue = TEXT("0");
+        return true;
+    }
+    ///Same applies to pointers, they need to be default initialized to nullptr
+    if (SymbolTag == SymTagPointerType) {
+        OutValueInitDefaultValue = TEXT("nullptr");
+        return true;
+    }
+    ///Whenever arrays need to be default initialized or not depends on the underlying element type
+    if (SymbolTag == SymTagArrayType) {
+        CComPtr<IDiaSymbol> ElementType{};
+        if (FAILED(TypeSymbol->get_type(&ElementType))) {
+            return false;
+        }
+        return DoesTypeNeedValueInitialization(ElementType, OutValueInitDefaultValue);
+    }
+    ///For typedefs we need to look up the underlying type to check if they need anything
+    if (SymbolTag == SymTagTypedef) {
+        CComPtr<IDiaSymbol> UnderlyingTypeSymbol{};
+        if (FAILED(TypeSymbol->get_type(&UnderlyingTypeSymbol))) {
+            return false;
+        }
+        return DoesTypeNeedValueInitialization(UnderlyingTypeSymbol, OutValueInitDefaultValue);
+    }
+    ///Enumerations need value instantiation, which will give them 0 value of underlying type
+    if (SymbolTag == SymTagEnum) {
+        std::wstring EnumTypeName = GenerateUDTTypeDeclarationForSymbol(TypeSymbol, false);
+        OutValueInitDefaultValue = Printf(TEXT("(%s) 0"), EnumTypeName.c_str());
+        return true;
+    }
+    ///User defined types need value initialization if they do not have a default constructor
+    ///TODO: There are also special cases for classes that lack default constructor that properly initializes them
+    if (SymbolTag == SymTagUDT) {
+        OutValueInitDefaultValue = TEXT("");
+        BOOL bTypeHasConstructor = FALSE;
+        TypeSymbol->get_constructor(&bTypeHasConstructor);
+        return !bTypeHasConstructor;
+    }
+    ///Everything else totally does not default initialization
+    return false;
+}
+
+bool DoesTypeNeedNoInitConstruction(const CComPtr<IDiaSymbol>& TypeSymbol) {
+    DWORD SymbolTag = SymTagNull;
+    if (!SUCCEEDED(TypeSymbol->get_symTag(&SymbolTag))) {
+        return false;
+    }
+
+    ///Whenever arrays need their elements to be NoInit initialized or not depends on the underlying element type
+    if (SymbolTag == SymTagArrayType) {
+        CComPtr<IDiaSymbol> ElementType{};
+        if (FAILED(TypeSymbol->get_type(&ElementType))) {
+            return false;
+        }
+        return DoesTypeNeedNoInitConstruction(ElementType);
+    }
+    ///For typedefs we need to look up the underlying type to check if they need NoInit call
+    if (SymbolTag == SymTagTypedef) {
+        CComPtr<IDiaSymbol> UnderlyingTypeSymbol{};
+        if (FAILED(TypeSymbol->get_type(&UnderlyingTypeSymbol))) {
+            return false;
+        }
+        return DoesTypeNeedNoInitConstruction(UnderlyingTypeSymbol);
+    }
+    ///User defined types need NoInit constructor calls if they have a constructor
+    if (SymbolTag == SymTagUDT) {
+        BOOL bTypeHasConstructor = FALSE;
+        TypeSymbol->get_constructor(&bTypeHasConstructor);
+        return bTypeHasConstructor;
+    }
+    ///Everything else does not need NoInit constructor calls
+    return false;
+}
+
+bool IsSymbolUserDefinedType(const CComPtr<IDiaSymbol>& TypeSymbol) {
+    DWORD SymbolTag = SymTagNull;
+    if (!SUCCEEDED(TypeSymbol->get_symTag(&SymbolTag))) {
+        return false;
+    }
+    if (SymbolTag == SymTagTypedef) {
+        CComPtr<IDiaSymbol> UnderlyingTypeSymbol{};
+        if (FAILED(TypeSymbol->get_type(&UnderlyingTypeSymbol))) {
+            return false;
+        }
+        return IsSymbolUserDefinedType(UnderlyingTypeSymbol);
+    }
+    if (SymbolTag == SymTagUDT) {
+        return true;
+    }
+    return false;
+}
+
 std::wstring GenerateFunctionDeclaration(const CComPtr<IDiaSymbol>& FunctionSymbol) {
     CComPtr<IDiaSymbol> FunctionTypeSymbol;
     if (FAILED(FunctionSymbol->get_type(&FunctionTypeSymbol)) || !FunctionTypeSymbol) {
@@ -601,14 +727,50 @@ void GenerateUserDefinedTypeLayout(const CComPtr<IDiaSymbol>& UDTSymbol, FUserDe
         SysFreeString(SymbolName);
     }
 
-    CComPtr<IDiaSymbol> ParentClassSymbol{};
-    if (SUCCEEDED(UDTSymbol->get_classParent(&ParentClassSymbol))) {
-        BSTR ParentSymbolName{};
-        if (ParentClassSymbol != nullptr) {
-            if (SUCCEEDED(ParentClassSymbol->get_name(&ParentSymbolName))) {
-                OutLayout.ParentClassName = ParentSymbolName;
-                SysFreeString(ParentSymbolName);
+    ///Iterate the base classes of the user defined type
+    CComPtr<IDiaEnumSymbols> BaseClassSymbols{};
+    if (SUCCEEDED(UDTSymbol->findChildrenEx(SymTagBaseClass, NULL, nsNone, &BaseClassSymbols))) {
+        LONG SymbolCount = 0;
+        BaseClassSymbols->get_Count(&SymbolCount);
+
+        for (LONG i = 0; i < SymbolCount; i++) {
+            CComPtr<IDiaSymbol> BaseClassSymbol{};
+            BaseClassSymbols->Item(i, &BaseClassSymbol);
+            FParentClassInfo ParentClassInfo{};
+
+            BSTR ParentClassName{};
+            if (SUCCEEDED(BaseClassSymbol->get_name(&ParentClassName)) && ParentClassName) {
+                ParentClassInfo.ClassName = ParentClassName;
+                SysFreeString(ParentClassName);
             }
+
+            LONG ParentClassDataOffset{0};
+            if (SUCCEEDED(BaseClassSymbol->get_offset(&ParentClassDataOffset))) {
+                ParentClassInfo.ClassDataOffset = (int32_t) ParentClassDataOffset;
+            }
+
+            ULONGLONG ParentClassSize{0};
+            if (SUCCEEDED(BaseClassSymbol->get_length(&ParentClassSize))) {
+                ParentClassInfo.ClassSize = (int32_t) ParentClassSize;
+            }
+
+            DWORD VariableAccess{};
+            if (SUCCEEDED(BaseClassSymbol->get_access(&VariableAccess))) {
+                if (VariableAccess == CV_private) {
+                    ParentClassInfo.ClassAccess = EMemberAccess::Private;
+                } else if (VariableAccess == CV_protected) {
+                    ParentClassInfo.ClassAccess = EMemberAccess::Protected;
+                } else if (VariableAccess == CV_public) {
+                    ParentClassInfo.ClassAccess = EMemberAccess::Public;
+                }
+            }
+
+            BOOL bHasConstructor{false};
+            if (SUCCEEDED(BaseClassSymbol->get_constructor(&bHasConstructor))) {
+                ParentClassInfo.bHasConstructor = bHasConstructor;
+            }
+
+            OutLayout.ParentClasses.push_back(ParentClassInfo);
         }
     }
 
@@ -669,6 +831,7 @@ void GenerateUserDefinedTypeLayout(const CComPtr<IDiaSymbol>& UDTSymbol, FUserDe
                     CComPtr<IDiaSymbol> ElementType{};
                     if (SUCCEEDED(VariableType->get_type(&ElementType))) {
                         MemberVariable.VariableType = GenerateTypeDeclarationForSymbol(ElementType);
+                        MemberVariable.bIsUDT = IsSymbolUserDefinedType(ElementType);
                     }
 
                     DWORD ArrayElementCount = 0;
@@ -677,7 +840,11 @@ void GenerateUserDefinedTypeLayout(const CComPtr<IDiaSymbol>& UDTSymbol, FUserDe
                     }
                 } else {
                     MemberVariable.VariableType = GenerateTypeDeclarationForSymbol(VariableType);
+                    MemberVariable.bIsUDT = IsSymbolUserDefinedType(VariableType);
                 }
+
+                MemberVariable.bNeedsValueInit = DoesTypeNeedValueInitialization(VariableType, MemberVariable.ValueInitDefaultValue);
+                MemberVariable.bNeedsNoInitConstructorCall = DoesTypeNeedNoInitConstruction(VariableType);
             }
 
             DWORD VariableAccess{};
@@ -893,6 +1060,136 @@ void GenerateTopLevelMacroDefinitions(FGeneratedFile& GeneratedFile, const FUser
     GeneratedFile.Logf(TEXT("#define VIRTUAL_FUNCTION_COUNT_%s %d"), SanitizeCppIdentifier(TypeLayout.ClassName).c_str(), TypeLayout.VirtualTableEntriesCount);
 }
 
+enum ENoInit { NoInit };
+
+struct Bar {
+    int Bar1;
+};
+
+struct Foo : Bar {
+    Foo() : Bar() {
+
+    }
+};
+
+void GenerateTypeLayoutNoInitConstructor(FGeneratedFile& GeneratedFile, const FUserDefinedTypeLayout& TypeLayout) {
+    GeneratedFile.Logf(TEXT("#define IMPLEMENT_NO_INIT_CONSTRUCTOR_%s \\"), SanitizeCppIdentifier(TypeLayout.ClassName).c_str());
+    GeneratedFile.BeginIndentLevel();
+
+    int32_t NoInitConstructorsNeeded = 0;
+    for (const FParentClassInfo& ParentClass : TypeLayout.ParentClasses) {
+        NoInitConstructorsNeeded += ParentClass.bHasConstructor;
+    }
+    for (const FMemberVariable& MemberVariable : TypeLayout.MemberVariables) {
+        NoInitConstructorsNeeded += MemberVariable.bNeedsNoInitConstructorCall;
+    }
+
+    GeneratedFile.Logf(TEXT("explicit inline %s(ENoInit)%s \\"), TypeLayout.ClassName.c_str(), NoInitConstructorsNeeded ? TEXT(" :") : TEXT(""));
+
+    if (NoInitConstructorsNeeded) {
+        GeneratedFile.BeginIndentLevel();
+
+        int32_t NoInitConstructorsCalled = 0;
+
+        ///We need to explicitly NoInit base class if it has a constructor defined, or it will be implicitly called
+        for (const FParentClassInfo& ParentClass : TypeLayout.ParentClasses) {
+            if (ParentClass.bHasConstructor) {
+                NoInitConstructorsCalled++;
+                const wchar_t* OptionalComma = NoInitConstructorsCalled < NoInitConstructorsNeeded ? TEXT(",") : TEXT("");
+                GeneratedFile.Logf(TEXT("%s(NoInit)%s \\"), ParentClass.ClassName.c_str(), OptionalComma);
+            }
+        }
+
+        for (const FMemberVariable& MemberVariable : TypeLayout.MemberVariables) {
+            if (MemberVariable.bNeedsNoInitConstructorCall) {
+                NoInitConstructorsCalled++;
+                const wchar_t* OptionalComma = NoInitConstructorsCalled < NoInitConstructorsNeeded ? TEXT(",") : TEXT("");
+
+                ///Arrays need NoInit constructor called on each of their elements, or it will call default constructor instead
+                ///Which is definitely not what we want there
+                if (MemberVariable.bIsArray && MemberVariable.bIsUDT) {
+                    std::wstring ArrayElementsInitializer;
+                    for (int32_t i = 0; i < MemberVariable.ArraySize; i++) {
+                        ArrayElementsInitializer.append(Printf(TEXT("%s(NoInit)"), MemberVariable.VariableType.c_str()));
+
+                        if ((i + 1) != MemberVariable.ArraySize) {
+                            ArrayElementsInitializer.append(TEXT(", "));
+                        }
+                    }
+                    ///Array initializers need to be initializer lists, normal curly brackets are not allowed
+                    GeneratedFile.Logf(TEXT("%s{%s}%s \\"), MemberVariable.VariableName.c_str(), ArrayElementsInitializer.c_str(), OptionalComma);
+                } else {
+                    GeneratedFile.Logf(TEXT("%s(NoInit)%s \\"), MemberVariable.VariableName.c_str(), OptionalComma);
+                }
+            }
+        }
+        GeneratedFile.EndIndentLevel();
+    }
+
+    GeneratedFile.Logf(TEXT("{} \\"));
+    GeneratedFile.EndIndentLevel();
+}
+
+void GenerateTypeLayoutForceInitConstructor(FGeneratedFile& GeneratedFile, const FUserDefinedTypeLayout& TypeLayout) {
+    GeneratedFile.Logf(TEXT("#define IMPLEMENT_FORCE_INIT_CONSTRUCTOR_%s \\"), SanitizeCppIdentifier(TypeLayout.ClassName).c_str());
+    GeneratedFile.BeginIndentLevel();
+
+    int32_t ForceInitConstructorsNeeded = 0;
+    for (const FParentClassInfo& ParentClass : TypeLayout.ParentClasses) {
+        ForceInitConstructorsNeeded += !ParentClass.bHasConstructor;
+    }
+    for (const FMemberVariable& MemberVariable : TypeLayout.MemberVariables) {
+        ForceInitConstructorsNeeded += MemberVariable.bNeedsValueInit;
+    }
+
+    GeneratedFile.Logf(TEXT("explicit inline %s(EForceInit)%s \\"), TypeLayout.ClassName.c_str(), ForceInitConstructorsNeeded ? TEXT(" :") : TEXT(""));
+
+    if (ForceInitConstructorsNeeded) {
+        GeneratedFile.BeginIndentLevel();
+
+        int32_t ForceInitConstructorsCalled = 0;
+
+        ///We need to explicitly default init the parent class if it does not have an explicit constructor
+        for (const FParentClassInfo& ParentClass : TypeLayout.ParentClasses) {
+            if (!ParentClass.bHasConstructor) {
+                ForceInitConstructorsCalled++;
+                const wchar_t* OptionalComma = ForceInitConstructorsCalled < ForceInitConstructorsNeeded ? TEXT(",") : TEXT("");
+                GeneratedFile.Logf(TEXT("%s()%s \\"), ParentClass.ClassName.c_str(), OptionalComma);
+            }
+        }
+
+        for (const FMemberVariable& MemberVariable : TypeLayout.MemberVariables) {
+            if (MemberVariable.bNeedsValueInit) {
+                ForceInitConstructorsCalled++;
+                const wchar_t* OptionalComma = ForceInitConstructorsCalled < ForceInitConstructorsNeeded ? TEXT(",") : TEXT("");
+
+                ///Arrays need initializer list used instead of brackets initializer
+                if (MemberVariable.bIsArray) {
+                    std::wstring ArrayElementsInitializer;
+                    for (int32_t i = 0; i < MemberVariable.ArraySize; i++) {
+                        ///Only call constructors on UDTs, otherwise substitute the default value directly
+                        if (MemberVariable.bIsUDT) {
+                            ArrayElementsInitializer.append(Printf(TEXT("%s(%s)"), MemberVariable.VariableType.c_str(), MemberVariable.ValueInitDefaultValue.c_str()));
+                        } else {
+                            ArrayElementsInitializer.append(MemberVariable.ValueInitDefaultValue);
+                        }
+                        if ((i + 1) != MemberVariable.ArraySize) {
+                            ArrayElementsInitializer.append(TEXT(", "));
+                        }
+                    }
+                    GeneratedFile.Logf(TEXT("%s{%s}%s \\"), MemberVariable.VariableName.c_str(), ArrayElementsInitializer.c_str(), OptionalComma);
+                } else {
+                    GeneratedFile.Logf(TEXT("%s(%s)%s \\"), MemberVariable.VariableName.c_str(), MemberVariable.ValueInitDefaultValue.c_str(), OptionalComma);
+                }
+            }
+        }
+        GeneratedFile.EndIndentLevel();
+    }
+
+    GeneratedFile.Logf(TEXT("{} \\"));
+    GeneratedFile.EndIndentLevel();
+}
+
 bool GenerateTypeLayoutFile(const std::wstring& OutputDirectory, const CComPtr<IDiaSymbol>& GlobalScope, const std::wstring& UDTName) {
     CComPtr<IDiaEnumSymbols> SymbolsEnumerator;
     GlobalScope->findChildrenEx(SymTagUDT, UDTName.c_str(), nsfUndecoratedName, &SymbolsEnumerator);
@@ -915,6 +1212,11 @@ bool GenerateTypeLayoutFile(const std::wstring& OutputDirectory, const CComPtr<I
     GenerateMemberVariableLayout(GeneratedFile, TypeLayout);
     GeneratedFile.Logf(TEXT(""));
     GenerateVirtualTableLayout(GeneratedFile, TypeLayout);
+    GeneratedFile.Logf(TEXT(""));
+    GenerateTypeLayoutNoInitConstructor(GeneratedFile, TypeLayout);
+    GeneratedFile.Logf(TEXT(""));
+    GenerateTypeLayoutForceInitConstructor(GeneratedFile, TypeLayout);
+    GeneratedFile.Logf(TEXT(""));
     GeneratedFile.WriteFile();
 
     return true;

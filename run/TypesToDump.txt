@@ -1,14 +1,27 @@
 #Basic UE Core types
+#FName can have different sizes depending on case-sensitive names in shipping
+!FName
 !FMalloc
 !FOutputDevice
 !FExec
 !IPlatformFile
 !IFileManager
+!FArchive
+!FArchiveState
 
 #Base UObject types
 !UObjectBase
 !UObjectBaseUtility
 !UObject
+!FUObjectItem
+!FUObjectArray
+!FUObjectArray::FUObjectCreateListener
+!FUObjectArray::FUObjectDeleteListener
+!FUObjectClusterContainer
+!FUObjectCluster
+!FChunkedFixedUObjectArray
+!FUObjectHashTables
+!FHashBucket
 
 #UObject system types
 !UField
