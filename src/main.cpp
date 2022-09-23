@@ -2,6 +2,7 @@
 #include <fstream>
 #include <Windows.h>
 #include <Psapi.h>
+#include <strsafe.h>
 #include <atlbase.h>
 #include <dia2.h>
 #include <DbgHelp.h>
@@ -117,6 +118,37 @@ bool DumpTypesForDebugFile(const std::filesystem::path& PDBFilePath, const std::
     return true;
 }
 
+std::wstring GetLastErrorString(LPCTSTR lpszFunction)
+{
+    // Retrieve the system error message for the last-error code
+
+    LPVOID lpMsgBuf;
+    LPVOID lpDisplayBuf;
+    DWORD dw = GetLastError();
+
+    FormatMessage(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER |
+            FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            dw,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPTSTR)&lpMsgBuf,
+            0, NULL);
+
+    lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
+                                      (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+    StringCchPrintf((LPTSTR)lpDisplayBuf,
+                    LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+                    TEXT("%s failed with error %d: %s"),
+                    lpszFunction, dw, lpMsgBuf);
+    auto ErrorAsString = std::wstring{(LPCTSTR)lpDisplayBuf};
+
+    LocalFree(lpMsgBuf);
+    LocalFree(lpDisplayBuf);
+    return ErrorAsString;
+}
+
 int main(int argc, const char** argv) {
     std::wcout << TEXT("Starting the UVTD") << std::endl;
     std::filesystem::path CurrentDirectory = std::filesystem::absolute(TEXT("."));
@@ -129,6 +161,7 @@ int main(int argc, const char** argv) {
     HMODULE DiaDllHandle = LoadLibraryW(DiaDllPath.wstring().c_str());
     if (DiaDllHandle == nullptr) {
         std::wcout << TEXT("Failed to load msdia140.dll file, make sure it's in the run director at ") << DiaDllPath << std::endl;
+        std::wcout << GetLastErrorString(TEXT("LoadLibrary")) << std::endl;
         return 1;
     }
 
